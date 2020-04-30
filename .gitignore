@@ -4,3 +4,5 @@
 .Ruserdata
 *.csv
 *.rds
+packrat/lib*/
+packrat/src/
