@@ -132,7 +132,7 @@ ui <- fluidPage(
   ) # end of tabsetPanel
 ) # end of fluidPage
 
-server <- function(input, output) {
+server <- function(input, output, session) {
   output$us_states <- renderLeaflet({
     date_select <- format(input$stateDate)
     bins <- c(0, 0.5, 0.8, 1.0, 1.2, 1.5, 2, 5, Inf)
@@ -334,6 +334,8 @@ server <- function(input, output) {
     with_options(options(digits = 3),  ggplotly(p))
 
   })
+
+  session$allowReconnect("force")
 
 }
 
