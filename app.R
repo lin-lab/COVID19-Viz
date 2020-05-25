@@ -113,6 +113,7 @@ ui <- fluidPage(
         sidebarPanel(
           h4("Select states/counties to compare their Rt."),
           p("Double click on a state in the legend to isolate its Rt curve."),
+          p("Single click on a state in the legend to hide its Rt curve."),
           selectizeInput("compare_select", label = "States/Counties",
                          choices = state_county_choices,
                          multiple = TRUE),
