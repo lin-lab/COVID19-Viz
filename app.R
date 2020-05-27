@@ -20,10 +20,21 @@ library(withr)
 library(data.table)
 library(RColorBrewer)
 
+########################################################################
+## Load data files
+########################################################################
+
 state_merged <- readRDS("clean_data/state_merged.rds")
 county_merged <- readRDS("clean_data/county_merged.rds")
 state_rt_long <- readRDS("clean_data/state_rt_long.rds")
 county_rt_long <- readRDS("clean_data/county_rt_long.rds")
+state_county_choices <- readRDS("clean_data/state_county_choices.rds")
+state_choices <- readRDS("clean_data/state_choices.rds")
+
+########################################################################
+## Define globals
+########################################################################
+
 base_state <- leaflet(data = state_merged) %>%
   setView(-96, 37.8, 4) %>%
   addProviderTiles(providers$Stamen.TonerLite)
@@ -31,8 +42,6 @@ base_county <- leaflet(county_merged) %>%
   setView(-96, 37.8, 4) %>%
   addProviderTiles(providers$Stamen.TonerLite)
 
-state_county_choices <- readRDS("clean_data/state_county_choices.rds")
-state_choices <- readRDS("clean_data/state_choices.rds")
 
 addPolygons_default <-
   partial(addPolygons,
@@ -70,10 +79,14 @@ rt_labeller <- function(rt_mean, rt_lwr, rt_upr) {
 
 # bins and colors for the map
 bins <- c(0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2, 5, Inf)
-pal_default <- partial(colorBin, palette = "RdYlBu", bins = bins,
-                       reverse = TRUE)
+rt_range <- range(county_rt_long$Rt_plot, na.rm = TRUE)
+pal_default <- partial(colorBin, domain = rt_range, palette = "RdYlBu",
+                       bins = bins, reverse = TRUE)
 
-# Define UI for application that draws a histogram
+########################################################################
+## Define UI
+########################################################################
+
 ui <- fluidPage(
   #tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}"),
   titlePanel("Rt"),
@@ -82,32 +95,21 @@ ui <- fluidPage(
     tabPanel("State-level Rt",
       sidebarLayout(
         sidebarPanel(
-          p("Use slider to adjust date. Click on a state to see its Rt over time."),
-          sliderInput("stateDate", label = "Date",
+          p("Use slider to adjust date. Click on an area to see its Rt over time."),
+          p("Click play button to animate Rt over time.")
+          sliderInput("RtDate", label = "Date",
                       min = min_date, max = max(dates),
                       value = max(dates), animate = TRUE),
-          plotOutput("state_rt")
-        ),
+          selectInput("select_resolution", "Resolution:",
+                      choices = c("state" = "State/Province", "county" = "County (US only)",
+                                  "country" = "Country"))
+          plotOutput("RtOverTime")
+        ), # end of sidebarPanel
         mainPanel(
-          leafletOutput("us_states", height = "90vh", width = "100%")
+          leafletOutput("RtMap", height = "90vh", width = "100%")
         )
       ) # end of sidebarLayout
     ), # end of tabPanel
-    # second tab: county-level Rt.
-    tabPanel("County-level Rt",
-      sidebarLayout(
-        sidebarPanel(
-          p("Use slider to adjust date. Click on a county to see its Rt over time."),
-          sliderInput("countyDate", label = "Date",
-                      min = min_date, max = max(dates),
-                      value = max(dates), animate = FALSE),
-          plotOutput("county_rt")
-        ),
-        mainPanel(
-          leafletOutput("us_counties", height = "90vh", width = "100%")
-        )
-      ) # end of sideBarLayout
-    ), # end of second tabPanel
     tabPanel("Compare Rt",
       sidebarLayout(
         sidebarPanel(
@@ -123,7 +125,7 @@ ui <- fluidPage(
           plotlyOutput("compare_plt_out", height = "90vh", width = "100%")
         )
       ) # end of sideBarLayout
-    ), # end of third tabPanel
+    ), # end of tabPanel
     tabPanel("Explore States",
       fluidRow(
         column(6,
@@ -150,32 +152,37 @@ ui <- fluidPage(
   ) # end of tabsetPanel
 ) # end of fluidPage
 
+########################################################################
+## Define Server function
+########################################################################
+
 server <- function(input, output, session) {
   cdata <- session$clientData
 
-  # state-level plot
-  output$us_states <- renderLeaflet({
-    date_select <- format(input$stateDate)
+  # reactive dataframe to get data for map.
+  map_df <- reactive({
+    date_select <- format(input$RtDate, "%Y-%m-%d")
     rt_col <- paste0("Rt_plot_", date_select)
     rtlwr_col <- paste0("Rt_lwr_", date_select)
     rtupr_col <- paste0("Rt_upr_", date_select)
-    pal <- pal_default(domain = state_merged[[date_select]])
-    # format for labels
-    rt_labels <- rt_labeller(state_merged[[rt_col]],
-                             state_merged[[rtlwr_col]],
-                             state_merged[[rtupr_col]])
-    labels_states <- sprintf("<strong>%s</strong><br/>Date: %s<br/>%s",
-                             state_merged$stateName,
-                             date_select,
-                             rt_labels) %>%
-      lapply(htmltools::HTML)
-    base_state %>%
-      addPolygons_default(
-        fillColor = pal(state_merged[[rt_col]]),
-        weight = 2, label = labels_states,
-        layer = state_merged$stateName) %>%
-      addLegend_default(pal = pal, values = state_merged[[rt_col]])
+
+    selected_res <- input$select_resolution
+    if (selected_res == "state") {
+      # do something
+      
+    } else if (selected_res == "county") {
+      # do something
+    } else {
+      stopifnot(selected_res == "country")
+      # not implemented yet
+    }
   })
+
+  rt_df <- reactive({
+  })
+
+  # state-level plot
+  callModule(mapviz, state_merged, "stateName", "stateName")
 
   state_df <- reactive({
     click <- input$us_states_shape_click
@@ -372,7 +379,7 @@ server <- function(input, output, session) {
     p <- plt_data_pruned %>%
       #ggplot(aes(x = date, y = county, color = Rt_plot, size = `Total Cases`)) +
       ggplot(aes(x = date, y = County, fill = `Rt Bins`, labels = Rt)) +
-      geom_tile() +
+      geom_tile(alpha = 0.7) +
       scale_fill_manual(drop = FALSE, values = color_pal) +
       xlab("Date") + ylab("County") +
       ggtitle(plt_title) +
@@ -381,7 +388,7 @@ server <- function(input, output, session) {
       scale_y_discrete(limits = rev(levels(plt_data_pruned$County))) +
       background_grid(major = "xy", minor = "xy") +
       theme(axis.text.y = element_text(size = 10),
-            legend.text = element_text(size = 8))
+            legend.text = element_text(size = 12))
     p
   })
 
