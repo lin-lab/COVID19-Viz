@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+*.tsv
 *.csv
 .rds
 packrat/lib*/
