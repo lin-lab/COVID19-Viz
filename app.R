@@ -305,7 +305,6 @@ server <- function(input, output, session) {
 
     plt_data_compare <- inner_join(rt_long_all, selected_uids, by = "UID") %>%
       rename(Rt = Rt_plot, Location = dispID)
-    print(plt_data_compare)
     ylim_max <- ceiling(max(plt_data_compare$Rt_upr))
     p <- na.omit(plt_data_compare) %>%
       ggplot(aes(x = date, y = Rt, color = Location, fill = Location)) +
