@@ -52,11 +52,14 @@ addPolygons_default <-
             textsize = "15px", direction = "auto"))
 
 addCircles_default <-
-  partial(addCircles, opacity = 1, weight = 1, radius = 17000,
+  partial(addCircles, opacity = 1, weight = 1, radius = 17000, dashArray = "3",
           fillOpacity = 0.7, stroke = TRUE, color = "white",
           labelOptions = labelOptions(
             style = list("font-weight" = "normal", padding = "3px 8px"),
-            textsize = "15px", direction = "auto"))
+            textsize = "15px", direction = "auto"),
+          highlightOptions = highlightOptions(
+            weight = 5, color = "#666", dashArray = "",
+            fillOpacity = 0.7, bringToFront = TRUE))
 
 addLegend_default <- partial(addLegend, position = "bottomright",
                              opacity = 0.75, title = "Rt")
@@ -165,6 +168,31 @@ addPolygon_Point <- function(.map, .data, labels, add_legend = FALSE) {
   return(map_ret)
 }
 
+set_state_zoom <- function(state_uid_str, default_zoom = 6) {
+  stopifnot(default_zoom >= 2)
+  state_str <- state_uid_to_place[state_uid_str]
+
+  # use variables defined by R
+  state_area_ordered <- state.name[order(state.area)]
+  huge_states <- state_area_ordered[50]
+  large_states <- state_area_ordered[48:49]
+  small_states <- state_area_ordered[4:10]
+  tiny_states <- state_area_ordered[1:3]
+
+
+  if (state_str %in% tiny_states) {
+    return(default_zoom + 2)
+  } else if (state_str %in% small_states) {
+    return(default_zoom + 1)
+  } else if (state_str %in% large_states) {
+    return(default_zoom - 1)
+  } else if (state_str %in% huge_states) {
+    return(default_zoom - 2)
+  } else {
+    return(default_zoom)
+  }
+}
+
 ui <- fluidPage(
   #tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}"),
   titlePanel("Visualizing COVID-19 Rate of Spread (Rt)"),
@@ -228,10 +256,10 @@ ui <- fluidPage(
       ),
       fluidRow(
         column(6, align = "center",
-          plotOutput("explore_states_counties", height = "500px")
+          plotOutput("explore_states_counties", height = "450px")
         ),
         column(6, align = "center",
-          leafletOutput("explore_states_out", height = "500px")
+          leafletOutput("explore_states_out", height = "450px")
         )
       )
     )
@@ -333,6 +361,7 @@ server <- function(input, output, session) {
     suppressWarnings(
       leaflet(data = counties_sf) %>%
         addProviderTiles(providers$Stamen.TonerLite) %>%
+        setView(-71.72, 42.06, 7) %>%
         addPolygons_default(fillColor = ~pal(Rt), label = labels_final,
                            layer = ~UID) %>%
         addLegend_default(pal = pal, values = ~Rt)
@@ -353,18 +382,21 @@ server <- function(input, output, session) {
     if (state_input == "84000002") {
       lng <- -147
     }
+    zoom_level <- set_state_zoom(state_input)
     suppressWarnings(
       leafletProxy("explore_states_out", session, data = counties_sf_cur) %>%
         clearShapes() %>%
         clearMarkers() %>%
-        flyTo(lng, lat, 6) %>%
+        flyTo(lng, lat, zoom_level) %>%
+        #fitBounds(counties_bbox["xmin"], counties_bbox["ymin"],
+        #          counties_bbox["xmax"], counties_bbox["ymax"]) %>%
         #flyToBounds(counties_bbox["xmin"], counties_bbox["ymin"],
         #            counties_bbox["xmax"], counties_bbox["ymax"]) %>%
         addPolygon_Point(counties_sf_cur, labels_final, add_legend = FALSE)
     )
   })
 
-  output$explore_states_counties <- renderPlot({
+  output$explore_states_counties <- renderCachedPlot({
     if (input$state_select == "") {
       return()
     }
@@ -394,7 +426,7 @@ server <- function(input, output, session) {
       theme(axis.text.y = element_text(size = 10),
             legend.text = element_text(size = 12))
     p
-  })
+  }, cacheKeyExpr = { input$state_select })
 
   session$allowReconnect("force")
 
