@@ -24,85 +24,164 @@ library(RColorBrewer)
 ## Load data files
 ########################################################################
 
-state_merged <- readRDS("clean_data/state_merged.rds")
-county_merged <- readRDS("clean_data/county_merged.rds")
-state_rt_long <- readRDS("clean_data/state_rt_long.rds")
-county_rt_long <- readRDS("clean_data/county_rt_long.rds")
-state_county_choices <- readRDS("clean_data/state_county_choices.rds")
-state_choices <- readRDS("clean_data/state_choices.rds")
+sf_all <- readRDS("clean_data/sf_all.rds")
+rt_long_all <- readRDS("clean_data/rt_long_all.rds")
+place_choices <- readRDS("clean_data/names_list.rds")
+
+state_uid_to_place <- as.list(names(place_choices$us_state))
+names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
 
 ########################################################################
 ## Define globals
 ########################################################################
 
-base_state <- leaflet(data = state_merged) %>%
-  setView(-96, 37.8, 4) %>%
-  addProviderTiles(providers$Stamen.TonerLite)
-base_county <- leaflet(county_merged) %>%
-  setView(-96, 37.8, 4) %>%
-  addProviderTiles(providers$Stamen.TonerLite)
-
+# bins and colors for the map
+bins <- c(0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2, 5, Inf)
+rt_range <- range(rt_long_all$Rt_plot, na.rm = TRUE)
+pal_default <- partial(colorBin, palette = "RdYlBu", bins = bins,
+                       reverse = TRUE)
 
 addPolygons_default <-
-  partial(addPolygons,
-          opacity = 1,
-          color = "white",
-          dashArray = "3",
-          fillOpacity = 0.7,
+  partial(addPolygons, opacity = 1, weight = 0.5, color = "white",
+          dashArray = "3", fillOpacity = 0.7,
           highlight = highlightOptions(
-            weight = 5,
-            color = "#666",
-            dashArray = "",
-            fillOpacity = 0.7,
-            bringToFront = TRUE),
+            weight = 5, color = "#666", dashArray = "",
+            fillOpacity = 0.7, bringToFront = TRUE),
           labelOptions = labelOptions(
             style = list("font-weight" = "normal", padding = "3px 8px"),
-            textsize = "15px",
-            direction = "auto"))
+            textsize = "15px", direction = "auto"))
 
-addLegend_default <-
-  partial(addLegend,
-          position = "bottomright", opacity = 0.75, title = "Rt")
+addCircles_default <-
+  partial(addCircles, opacity = 1, weight = 1, radius = 17000,
+          fillOpacity = 0.7, stroke = TRUE, color = "white",
+          labelOptions = labelOptions(
+            style = list("font-weight" = "normal", padding = "3px 8px"),
+            textsize = "15px", direction = "auto"))
 
-dates <- names(state_merged)[startsWith(names(state_merged), "death_")] %>%
-  substring(first = 7) %>%
-  as.Date(format = "%Y-%m-%d")
-min_date <- as.Date("2020-03-19", format = "%Y-%m-%d")
+addLegend_default <- partial(addLegend, position = "bottomright",
+                             opacity = 0.75, title = "Rt")
 
-rt_labeller <- function(rt_mean, rt_lwr, rt_upr) {
-  na_rt <- is.na(rt_mean)
+dates <- unique(rt_long_all$date)
+min_date <- min(dates)
+max_date <- max(dates)
+
+########################################################################
+## Define Functions
+########################################################################
+
+rt_labeller <- function(sf_dat) {
+  stopifnot(names(sf_dat) == c("Rt", "Rt_lwr", "Rt_upr", "UID",
+                               "dispID", "geometry"))
+  rt_col <- sf_dat[["Rt"]]
+  na_rt <- is.na(rt_col)
   rt_str <- ifelse(na_rt, "Insufficient data",
                    sprintf("Rt: %0.2f (%0.2f - %0.2f)",
-                           rt_mean, rt_lwr, rt_upr))
+                           rt_col, sf_dat[["Rt_lwr"]],
+                           sf_dat[["Rt_upr"]]))
   return(rt_str)
 }
 
-# bins and colors for the map
-bins <- c(0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2, 5, Inf)
-rt_range <- range(county_rt_long$Rt_plot, na.rm = TRUE)
-pal_default <- partial(colorBin, domain = rt_range, palette = "RdYlBu",
-                       bins = bins, reverse = TRUE)
+master_labeller <- function(sf_dat, date_select) {
+  stopifnot(names(sf_dat) == c("Rt", "Rt_lwr", "Rt_upr", "UID",
+                               "dispID", "geometry"))
+  rt_labels <- rt_labeller(sf_dat)
+  labels_final <- sprintf("<strong>%s</strong><br/>Date: %s<br/>%s",
+                          sf_dat$dispID, date_select, rt_labels) %>%
+      lapply(htmltools::HTML)
+  return(labels_final)
+}
 
-########################################################################
-## Define UI
-########################################################################
+sf_by_id <- function(uid) {
+  ret_sf <- dplyr::filter(rt_long_all, UID == uid)
+  return(ret_sf)
+}
+
+get_county_uids <- function(state_uid_str) {
+  # MA, UT, MO have extra counties
+  extra_states <- c("84000025", "84000049", "84000029")
+  state_id <- as.numeric(state_uid_str) %% 100
+  state_uid_lwr <- 84000000 + state_id * 1e3
+  state_uid_upr <- state_uid_lwr + 1e3
+  if (state_uid_str %in% extra_states) {
+    extra_uids <- switch(state_uid_str,
+      `84000025` = 84070002,
+      `84000029` = 84070003,
+      `84000049` = 84070015:84070020
+    )
+  } else {
+    extra_uids <- NULL
+  }
+  ret <- list(uid_lwr = state_uid_lwr, uid_upr = state_uid_upr,
+              extra_uids = extra_uids)
+  return(ret)
+}
+
+sf_by_date_res <- function(date_select,
+                           sel_resolution = c("state", "county", "country"),
+                           state_uid = NULL) {
+  sel_resolution <- match.arg(sel_resolution)
+  rt_col <- paste0("Rt_plot_", date_select)
+  rtlwr_col <- paste0("Rt_lwr_", date_select)
+  rtupr_col <- paste0("Rt_upr_", date_select)
+  select_cols <- c(rt_col, rtlwr_col, rtupr_col, "UID", "dispID")
+
+  if (is.null(state_uid)) {
+    ret_sf <- sf_all %>%
+      filter(resolution == sel_resolution) %>%
+      select(!!select_cols)
+  } else {
+    stopifnot(sel_resolution == "county")
+    county_uids <- get_county_uids(state_uid)
+    ret_sf <- sf_all %>%
+      filter(resolution == sel_resolution, (UID > county_uids$uid_lwr &
+              UID < county_uids$uid_upr) | UID %in% county_uids$extra_uids) %>%
+      select(!!select_cols)
+  }
+  names(ret_sf) <- c("Rt", "Rt_lwr", "Rt_upr", "UID", "dispID", "geometry")
+
+  return(ret_sf)
+}
+
+addPolygon_Point <- function(.map, .data, labels, add_legend = FALSE) {
+  pal <- pal_default(domain = .data$Rt)
+  stopifnot(names(.data) == c("Rt", "Rt_lwr", "Rt_upr", "UID", "dispID",
+                             "geometry"))
+  polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
+  data_polygons <- .data[polygon_idx, ]
+  data_points <- .data[!polygon_idx, ]
+  map_ret <- addPolygons_default(.map, data = data_polygons,
+                                 fillColor = ~pal(Rt),
+                                 label = labels[polygon_idx],
+                                 layer = ~UID)
+
+  if (sum(polygon_idx) < nrow(.data)) {
+    map_ret <- addCircles_default(map_ret, data = data_points,
+                                  fillColor = ~pal(Rt), layer = ~UID,
+                                  label = labels[!polygon_idx])
+  }
+  if (add_legend) {
+    map_ret <- addLegend_default(map_ret, pal = pal, values = .data$Rt)
+  }
+  return(map_ret)
+}
 
 ui <- fluidPage(
   #tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}"),
-  titlePanel("Rt"),
+  titlePanel("Visualizing COVID-19 Rate of Spread (Rt)"),
   tabsetPanel(
     # first panel: output for all states
-    tabPanel("State-level Rt",
+    tabPanel("Rt Map",
       sidebarLayout(
         sidebarPanel(
           p("Use slider to adjust date. Click on an area to see its Rt over time."),
-          p("Click play button to animate Rt over time.")
+          p("Click play button to animate Rt over time."),
           sliderInput("RtDate", label = "Date",
                       min = min_date, max = max(dates),
                       value = max(dates), animate = TRUE),
           selectInput("select_resolution", "Resolution:",
-                      choices = c("state" = "State/Province", "county" = "County (US only)",
-                                  "country" = "Country"))
+                      choices = list("States/Provinces (US, CAN, CHN, AUS)" = "state",
+                                     "County (US only)" = "county",
+                                     "Country" = "country")),
           plotOutput("RtOverTime")
         ), # end of sidebarPanel
         mainPanel(
@@ -113,16 +192,22 @@ ui <- fluidPage(
     tabPanel("Compare Rt",
       sidebarLayout(
         sidebarPanel(
-          h4("Select states/counties to compare their Rt."),
-          p("Double click on a state in the legend to isolate its Rt curve."),
-          p("Single click on a state in the legend to hide its Rt curve."),
-          selectizeInput("compare_select", label = "States/Counties",
-                         choices = state_county_choices,
+          h4("Select areas to compare their Rt."),
+          p("Double click on an area in the legend to isolate its Rt curve."),
+          selectizeInput("compare_sel_states", label = "States/Provinces",
+                         choices = place_choices$state,
+                         multiple = TRUE),
+          selectizeInput("compare_sel_counties", label = "Counties (US)",
+                         choices = place_choices$county,
+                         multiple = TRUE),
+          selectizeInput("compare_sel_countries", label = "Countries",
+                         choices = place_choices$country,
                          multiple = TRUE),
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
           plotlyOutput("compare_plt_out", height = "90vh", width = "100%")
+          #plotOutput("compare_plt_out")
         )
       ) # end of sideBarLayout
     ), # end of tabPanel
@@ -131,8 +216,9 @@ ui <- fluidPage(
         column(6,
           h4("Select a state to explore"),
           selectizeInput("state_select", label = "State",
-                         selected = "Massachusetts",
-                         choices = state_choices, multiple = FALSE)
+                         selected = "84000025",
+                         choices = place_choices$us_state,
+                         multiple = FALSE)
         ),
         column(6, align = "center",
           sliderInput("state_select_date", label = "Date",
@@ -159,165 +245,76 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   cdata <- session$clientData
 
-  # reactive dataframe to get data for map.
-  map_df <- reactive({
+  output$RtMap <- renderLeaflet({
+    sf_dat_init <- sf_by_date_res(max_date, "state")
+    labels_final <- master_labeller(sf_dat_init, max_date)
+    pal <- pal_default(domain = sf_dat_init$Rt)
+    suppressWarnings(
+      leaflet() %>%
+        setView(-96, 37.8, 4) %>%
+        addProviderTiles(providers$Stamen.TonerLite) %>%
+        addLegend_default(pal = pal, values = sf_dat_init$Rt)
+    )
+  })
+
+  observe({
     date_select <- format(input$RtDate, "%Y-%m-%d")
-    rt_col <- paste0("Rt_plot_", date_select)
-    rtlwr_col <- paste0("Rt_lwr_", date_select)
-    rtupr_col <- paste0("Rt_upr_", date_select)
-
-    selected_res <- input$select_resolution
-    if (selected_res == "state") {
-      # do something
-      
-    } else if (selected_res == "county") {
-      # do something
-    } else {
-      stopifnot(selected_res == "country")
-      # not implemented yet
-    }
+    sel_resolution <- input$select_resolution
+    sf_dat_cur <- sf_by_date_res(date_select, sel_resolution)
+    labels_final <- master_labeller(sf_dat_cur, date_select)
+    suppressWarnings(
+      leafletProxy("RtMap", data = sf_dat_cur) %>%
+        clearShapes() %>%
+        clearMarkers() %>%
+        addPolygon_Point(sf_dat_cur, labels_final, add_legend = FALSE)
+    )
   })
 
-  rt_df <- reactive({
-  })
-
-  # state-level plot
-  callModule(mapviz, state_merged, "stateName", "stateName")
-
-  state_df <- reactive({
-    click <- input$us_states_shape_click
+  output$RtOverTime <- renderPlot({
+    click <- input$RtMap_shape_click
+    sel_resolution <- input$select_resolution
     if (!is.null(click)) {
-      click_state <- click$id
-      state_rt_long %>%
-        dplyr::filter(stateName == click_state)
-    } else {
-      NULL
+      plt_dat <- sf_by_id(click$id)
+      if (nrow(plt_dat) > 0) {
+        plt_title <- sprintf("Rt for %s", unique(plt_dat$dispID))
+        ylim_max <- ceiling(max(plt_dat$Rt_upr))
+        p <- plt_dat %>%
+          ggplot(aes(x = date, y = Rt_plot)) +
+          geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr),
+                      fill = "darkgray") +
+          geom_line(color = "black") + geom_point() +
+          xlab("Date") + ylab("Rt") + ggtitle(plt_title) +
+          ylim(0, ylim_max) + geom_hline(yintercept = 1, lty = 2) +
+          theme_cowplot() + scale_x_date(date_minor_breaks = "1 day") +
+          background_grid(major = "xy", minor = "xy")
+        suppressWarnings(print(p))
+      }
     }
   })
 
-  output$state_rt <- renderPlot({
-    plt_data_state <- state_df()
-    if (!is.null(plt_data_state) && nrow(plt_data_state) > 0) {
-      state_name <- unique(plt_data_state$stateName)[1]
-      ylim_max <- ceiling(max(plt_data_state$Rt_upr))
-      p <- plt_data_state %>%
-        ggplot(aes(x = date, y = Rt_plot)) +
-        geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr),
-                    fill = "darkgray") +
-        geom_line(color = "black") +
-        geom_point() +
-        xlab("Date") + ylab("Rt") +
-        ggtitle(sprintf("Rt for %s", state_name)) +
-        ylim(0, ylim_max) +
-        geom_hline(yintercept = 1, lty = 2) +
-        theme_cowplot() +
-        scale_x_date(date_minor_breaks = "1 day") +
-        background_grid(major = "xy", minor = "xy")
-      suppressWarnings(print(p))
-    }
-  })
-
-
-  output$us_counties <- renderLeaflet({
-    date_select <- format(input$countyDate)
-    rt_col <- paste0("Rt_plot_", date_select)
-    rtlwr_col <- paste0("Rt_lwr_", date_select)
-    rtupr_col <- paste0("Rt_upr_", date_select)
-    pal <- pal_default(domain = state_merged[[date_select]])
-    # format for labels
-    rt_labels <- rt_labeller(county_merged[[rt_col]],
-                             county_merged[[rtlwr_col]],
-                             county_merged[[rtupr_col]])
-    labels_counties <- sprintf("<strong>%s, %s</strong><br/>%s",
-                               county_merged$county,
-                               county_merged$stateName,
-                               rt_labels) %>%
-      lapply(htmltools::HTML)
-    base_county %>%
-      addPolygons_default(
-        fillColor = pal(county_merged[[rt_col]]),
-        weight = 0.5, label = labels_counties,
-        layer = county_merged$UID) %>%
-      addLegend_default(pal = pal, values = county_merged[[rt_col]])
-  })
-
-  county_df <- reactive({
-    click <- input$us_counties_shape_click
-    if (!is.null(click)) {
-      click_county_UID <- click$id
-      county_rt_long %>%
-        dplyr::filter(UID == click_county_UID)
-    } else {
-      NULL
-    }
-  })
-
-  output$county_rt <- renderPlot({
-    plt_data_county <- county_df()
-    if (!is.null(plt_data_county) && nrow(plt_data_county) > 0) {
-      county_name <- unique(plt_data_county$county)[1]
-      state_name <- unique(plt_data_county$stateName)[1]
-      plt_title <- sprintf("Rt for %s, %s", county_name,
-                           state_name)
-      ylim_max <- ceiling(max(plt_data_county$Rt_upr))
-      p <- plt_data_county %>%
-        ggplot(aes(x = date, y = Rt_plot)) +
-        geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr),
-                    fill = "darkgray") +
-        geom_line(color = "black") +
-        geom_point() +
-        xlab("Date") + ylab("Rt") +
-        ggtitle(plt_title) +
-        ylim(0, ylim_max) +
-        geom_hline(yintercept = 1, lty = 2) +
-        theme_cowplot() +
-        scale_x_date(date_minor_breaks = "1 day") +
-        background_grid(major = "xy", minor = "xy")
-      suppressWarnings(print(p))
-    }
-  })
-
-  compare_plt <- reactive({
-    if (input$compare_submit == 0) {
+  compare_plt <- eventReactive(input$compare_submit, {
+    selected_states <- input$compare_sel_states
+    selected_counties <- input$compare_sel_counties
+    selected_countries <- input$compare_sel_countries
+    selected_uids <- data.frame(
+      UID = as.double(c(selected_states, selected_counties, selected_countries))
+    )
+    if (nrow(selected_uids) == 0) {
       return()
     }
-    selected <- isolate(input$compare_select)
-    if (is.null(selected)) {
-      return()
-    }
-    states_selected <- tibble(stateName = gsub(" State", "", selected))
-    df_county <- tibble()
-    df_state <- state_rt_long %>%
-      right_join(states_selected, by = "stateName") %>%
-      select(Location = stateName, date, Rt_plot, Rt_lwr, Rt_upr)
-    counties_states <- Filter(function(x) { length(x) == 2 },
-                              strsplit(selected, split = ", ",
-                                       fixed = TRUE))
-    if (length(counties_states) > 0) {
-      counties_selected <- tibble(
-        county = vapply(counties_states, function(x) { x[1] }, "a"),
-        stateName = vapply(counties_states, function(x) { x[2] }, "a")
-      )
-      df_county <- county_rt_long %>%
-        right_join(counties_selected, by = c("county", "stateName")) %>%
-        mutate(Location_str = paste(county, stateName, sep = ", ")) %>%
-        mutate(Location = factor(Location_str,
-                                 levels = rev(unique(Location_str)))) %>%
-        select(Location, date, Rt_plot, Rt_lwr, Rt_upr)
-    }
-    plt_data_compare <- rbind(df_state, df_county)
+
+    plt_data_compare <- inner_join(rt_long_all, selected_uids, by = "UID") %>%
+      rename(Rt = Rt_plot, Location = dispID)
+    print(plt_data_compare)
     ylim_max <- ceiling(max(plt_data_compare$Rt_upr))
     p <- na.omit(plt_data_compare) %>%
-      ggplot(aes(x = date, y = Rt_plot, color = Location, fill = Location)) +
+      ggplot(aes(x = date, y = Rt, color = Location, fill = Location)) +
       geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr), alpha = 0.2) +
-      geom_line() + geom_point() +
-      xlab("Date") + ylab("Rt") +
-      ggtitle("Comparison of Rt") +
-      ylim(0, ylim_max) +
+      geom_line() + geom_point() + xlab("Date") + ylab("Rt") +
+      ggtitle("Comparison of Rt") + ylim(0, ylim_max) +
       geom_hline(yintercept = 1, lty = 2) +
-      scale_color_discrete(name = "State/County") +
-      theme_cowplot() +
       scale_x_date(date_minor_breaks = "1 day") +
+      scale_color_discrete(name = "State/County") + theme_cowplot() +
       background_grid(major = "xy", minor = "xy")
     p
   })
@@ -331,60 +328,68 @@ server <- function(input, output, session) {
   })
 
   output$explore_states_out <- renderLeaflet({
-    if (input$state_select == "") {
-      return()
+    counties_sf <- sf_by_date_res(max_date, "county", "84000025")
+    labels_final <- master_labeller(counties_sf, max_date)
+    pal <- pal_default(domain = counties_sf$Rt)
+    suppressWarnings(
+      leaflet(data = counties_sf) %>%
+        addProviderTiles(providers$Stamen.TonerLite) %>%
+        addPolygons_default(fillColor = ~pal(Rt), label = labels_final,
+                           layer = ~UID) %>%
+        addLegend_default(pal = pal, values = ~Rt)
+    )
+  })
+
+  observe({
+    date_select <- format(input$state_select_date, "%Y-%m-%d")
+    state_input <- input$state_select
+    validate(need(input$state_select, "Please choose a state"))
+
+    counties_sf_cur <- sf_by_date_res(date_select, "county", state_input)
+    labels_final <- master_labeller(counties_sf_cur, date_select)
+    pal <- pal_default(domain = counties_sf_cur$Rt)
+    counties_bbox <- st_bbox(counties_sf_cur)
+    lng <- mean(c(counties_bbox["xmin"], counties_bbox["xmax"]))
+    lat <- mean(c(counties_bbox["ymin"], counties_bbox["ymax"]))
+    if (state_input == "84000002") {
+      lng <- -147
     }
-    counties_plt <- subset(county_merged,
-                           county_merged$stateName == input$state_select)
-    date_select <- format(input$state_select_date)
-    rt_col <- paste0("Rt_plot_", date_select)
-    rtlwr_col <- paste0("Rt_lwr_", date_select)
-    rtupr_col <- paste0("Rt_upr_", date_select)
-    pal <- pal_default(domain = counties_plt[[rt_col]])
-    # format for labels
-    rt_labels <- rt_labeller(counties_plt[[rt_col]],
-                             counties_plt[[rtlwr_col]],
-                             counties_plt[[rtupr_col]])
-    labels_counties <- sprintf("<strong>%s, %s</strong><br/>%s",
-                               counties_plt$county,
-                               counties_plt$stateName,
-                               rt_labels) %>%
-      lapply(htmltools::HTML)
-    #boundary <- st_bbox(counties_plt)
-    leaflet(counties_plt) %>%
-      addProviderTiles(providers$Stamen.TonerLite) %>%
-      addPolygons_default(
-        fillColor = pal(counties_plt[[rt_col]]),
-        weight = 0.5, label = labels_counties,
-        layer = counties_plt$geoid) %>%
-      addLegend_default(pal = pal, values = counties_plt[[rt_col]])
+    suppressWarnings(
+      leafletProxy("explore_states_out", session, data = counties_sf_cur) %>%
+        clearShapes() %>%
+        clearMarkers() %>%
+        flyTo(lng, lat, 6) %>%
+        #flyToBounds(counties_bbox["xmin"], counties_bbox["ymin"],
+        #            counties_bbox["xmax"], counties_bbox["ymax"]) %>%
+        addPolygon_Point(counties_sf_cur, labels_final, add_legend = FALSE)
+    )
   })
 
   output$explore_states_counties <- renderPlot({
-  #output$explore_states_counties <- renderPlot({
     if (input$state_select == "") {
       return()
     }
-    plt_data_pruned <- county_rt_long %>%
-      filter(stateName == input$state_select, !is.na(Rt_plot)) %>%
-      filter(county != "Unassigned", !startsWith(county, "Out of")) %>%
-      mutate(County = factor(county),
+    county_uids <- get_county_uids(input$state_select)
+    plt_data_pruned <- rt_long_all %>%
+      filter((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
+               UID %in% county_uids$extra_uids,
+             !is.na(Rt_plot)) %>%
+      mutate(County = factor(dispID),
              `Rt Bins` = cut(Rt_plot, breaks = bins,
                              include.lowest = TRUE, right = FALSE)) %>%
       rename(Rt = Rt_plot)
     color_pal <- rev(brewer.pal(9, "RdYlBu"))
     names(color_pal) <- levels(plt_data_pruned$`Rt Bins`)
 
-    plt_title <- sprintf("Rt for %s Counties", input$state_select)
+    plt_title <- sprintf("Rt for %s Counties",
+                         state_uid_to_place[[input$state_select]])
     p <- plt_data_pruned %>%
       #ggplot(aes(x = date, y = county, color = Rt_plot, size = `Total Cases`)) +
       ggplot(aes(x = date, y = County, fill = `Rt Bins`, labels = Rt)) +
       geom_tile(alpha = 0.7) +
       scale_fill_manual(drop = FALSE, values = color_pal) +
-      xlab("Date") + ylab("County") +
-      ggtitle(plt_title) +
-      theme_cowplot() +
-      scale_x_date(date_minor_breaks = "1 day") +
+      xlab("Date") + ylab("County") + ggtitle(plt_title) +
+      theme_cowplot() + scale_x_date(date_minor_breaks = "1 day") +
       scale_y_discrete(limits = rev(levels(plt_data_pruned$County))) +
       background_grid(major = "xy", minor = "xy") +
       theme(axis.text.y = element_text(size = 10),
