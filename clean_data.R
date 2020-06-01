@@ -11,24 +11,25 @@ library(USAboundaries)
 library(rnaturalearth)
 
 POS_CUTOFF <- 50
+POSINCR_CUTOFF <- -Inf
 START_DATE <- ymd("2020-03-19")
 
 ########################################################################
 ## State-level data
 ########################################################################
 
-state_rt_long <- read_csv("raw_data/jhu_state_rt.csv") %>%
+state_rt_long <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
   filter(date >= START_DATE) %>%
-  select(stateName, date, mean_rt, ci_lower, ci_upper, positive, death) %>%
+  select(stateName, date, mean_rt, ci_lower, ci_upper, positive,
+         positiveIncrease, death) %>%
   data.table()
 # when number of cases is too small, set Rt to NA
 # also pick start date after 3/19
-state_rt_long[positive >= POS_CUTOFF & date >= START_DATE,
+state_rt_long[positive >= POS_CUTOFF & date >= START_DATE &
+                positiveIncrease >= POSINCR_CUTOFF,
               `:=`(Rt_plot = mean_rt,
                    Rt_upr = ci_upper,
                    Rt_lwr = ci_lower)]
-state_rt_long[positive < POS_CUTOFF,
-              `:=`(Rt_plot = NA, Rt_upr = NA, Rt_lwr = NA)]
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
@@ -64,19 +65,18 @@ state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
 
 county_maps <- us_counties() %>%
   mutate(UID = as.integer(paste0("840", geoid)))
-county_rt_long <- read_csv("raw_data/jhu_county_rt.csv",
+county_rt_long <- read_tsv("raw_data/jhu_county_rt.tsv",
                            guess_max = 10000) %>%
   filter(date >= START_DATE) %>%
-  select(UID, date, county, stateName, FIPS, positive, death, mean_rt,
-         ci_lower, ci_upper) %>%
+  select(UID, date, county, stateName, FIPS, positive, positiveIncrease,
+         death, mean_rt, ci_lower, ci_upper) %>%
   data.table()
 # when number of cases is too small, set Rt to NA
-county_rt_long[positive >= POS_CUTOFF & date >= START_DATE,
+county_rt_long[positive >= POS_CUTOFF & date >= START_DATE &
+                positiveIncrease >= POSINCR_CUTOFF,
                `:=`(Rt_plot = mean_rt,
                     Rt_upr = ci_upper,
                     Rt_lwr = ci_lower)]
-county_rt_long[positive < POS_CUTOFF,
-               `:=`(Rt_plot = NA, Rt_upr = NA, Rt_lwr = NA)]
 county_rt_long[mean_rt >= 10 & positive >= POS_CUTOFF,]
 stopifnot(all(county_rt_long$Rt_upr >= county_rt_long$Rt_lwr, na.rm = TRUE))
 # make combined key for county rt long
@@ -209,12 +209,11 @@ global_rt_long[UID == 12406, Combined_Key := "Northwest Territories, Canada"]
 
 # when number of cases is too small, set Rt to NA
 global_rt_long <- global_rt_long[date >= START_DATE,]
-global_rt_long[positive >= POS_CUTOFF & date >= START_DATE,
+global_rt_long[positive >= POS_CUTOFF & date >= START_DATE &
+                 positiveIncrease >= POSINCR_CUTOFF,
                `:=`(Rt_plot = mean_rt,
                     Rt_upr = ci_upper,
                     Rt_lwr = ci_lower)]
-global_rt_long[positive < POS_CUTOFF,
-               `:=`(Rt_plot = NA, Rt_upr = NA, Rt_lwr = NA)]
 global_rt_long[mean_rt >= 10 & positive >= POS_CUTOFF,]
 stopifnot(all(global_rt_long$Rt_upr >= global_rt_long$Rt_lwr, na.rm = TRUE))
 
@@ -277,7 +276,7 @@ provinces_sf <- provinces_sf_orig %>%
   st_sf()
 
 # Add Macau and Hong Kong
-macau_hk <- global_rt_wide[Province_State %in% c("Macau", "Hong Kong")]
+macau_hk <- global_rt_wide[Province_State %in% c("Macau SAR", "Hong Kong SAR")]
 stopifnot(nrow(macau_hk) == 2)
 
 point_lst <- list()
@@ -463,6 +462,7 @@ names_dt <- data.table(names = c(state_province_names$dispID,
                                  county_names$UID,
                                  country_names$UID))
 rep_names <- names_dt[, .N, by = names][N > 1, ]
+rep_names
 stopifnot(nrow(rep_names) == 0)
 
 saveRDS(sf_all, "clean_data/sf_all.rds")
