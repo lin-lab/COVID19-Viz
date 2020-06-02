@@ -11,53 +11,66 @@ library(USAboundaries)
 library(rnaturalearth)
 
 POS_CUTOFF <- 50
-POSINCR_CUTOFF <- -Inf
+POSINCR_CUTOFF <- 10
 START_DATE <- ymd("2020-03-19")
+
+subset_rollmean <- function(dt, group_var = "UID", window_size = 7,
+                            pos_cutoff = POS_CUTOFF,
+                            posincr_cutoff = POSINCR_CUTOFF,
+                            start_date = START_DATE) {
+  dt[positiveIncrease <= 0, posIncr_trunc := 0]
+  dt[positiveIncrease > 0, posIncr_trunc := positiveIncrease]
+  dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
+                                    align = "center", algo = "exact"),
+    by = group_var]
+  ret <- dt[date >= start_date & !is.na(rolling_posIncr)]
+  ret[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
+      `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
+  return(ret)
+}
 
 ########################################################################
 ## State-level data
 ########################################################################
 
-state_rt_long <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
-  filter(date >= START_DATE) %>%
-  select(stateName, date, mean_rt, ci_lower, ci_upper, positive,
-         positiveIncrease, death) %>%
+state_rt_long_orig <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
   data.table()
-# when number of cases is too small, set Rt to NA
-# also pick start date after 3/19
-state_rt_long[positive >= POS_CUTOFF & date >= START_DATE &
-                positiveIncrease >= POSINCR_CUTOFF,
-              `:=`(Rt_plot = mean_rt,
-                   Rt_upr = ci_upper,
-                   Rt_lwr = ci_lower)]
+
+state_rt_long <- subset_rollmean(state_rt_long_orig, "stateName")
+
+# check that we calculated the rolling mean correctly
+state_check <- state_rt_long[stateName == "New Jersey", ]
+stopifnot(all.equal(state_check$rolling_posIncr[4],
+                    mean(state_check$posIncr_trunc[1:7])))
+stopifnot(all.equal(state_check$rolling_posIncr[5],
+                    mean(state_check$posIncr_trunc[2:8])))
+stopifnot(all.equal(state_check$rolling_posIncr[10],
+                    mean(state_check$posIncr_trunc[7:13])))
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
-  select(stateName, date, Rt_plot, Rt_upr, Rt_lwr, positive, death) %>%
+  select(stateName, date, Rt_plot, Rt_upr, Rt_lwr) %>%
   pivot_wider(id_cols = c(stateName), names_from = date,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr, positive, death))
+              values_from = c(Rt_plot, Rt_upr, Rt_lwr))
 
 state_maps <- ne_states(country = "united states of america",
                         returnclass = "sf")
 state_merged <- state_maps %>%
   select(name, geometry, fips) %>%
   mutate(UID = as.integer(paste0("840000", substring(fips, 3))),
-         resolution = "state", default_shown = TRUE,
-         dispID = paste0(name, ", USA")) %>%
+         resolution = "state_USA_Canada", dispID = paste0(name, ", USA")) %>%
   select(-fips) %>%
   merge(state_rt_tomerge, by.x = "name",
                       by.y = "stateName", all.x = FALSE) %>%
-  select(UID, dispID, resolution, default_shown, starts_with("Rt_"))
-
+  select(UID, dispID, resolution, starts_with("Rt_"))
 
 exported_states <-
   with(state_merged,
        data.table(UID = UID, stateName = substr(dispID, 1, nchar(dispID) - 5)))
 state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
-  mutate(resolution = "state", default_shown = TRUE,
-         dispID = paste0(stateName, ", USA")) %>%
-  select(UID, dispID = stateName, date, resolution, default_shown,
-         Rt_plot, Rt_upr, Rt_lwr)
+  mutate(resolution = "state", dispID = paste0(stateName, ", USA")) %>%
+  select(UID, dispID, date, resolution,
+         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
 ## County-level data
@@ -65,20 +78,13 @@ state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
 
 county_maps <- us_counties() %>%
   mutate(UID = as.integer(paste0("840", geoid)))
-county_rt_long <- read_tsv("raw_data/jhu_county_rt.tsv",
-                           guess_max = 10000) %>%
-  filter(date >= START_DATE) %>%
-  select(UID, date, county, stateName, FIPS, positive, positiveIncrease,
-         death, mean_rt, ci_lower, ci_upper) %>%
+county_rt_long_orig <- read_tsv("raw_data/jhu_county_rt.tsv",
+                                guess_max = 10000) %>%
   data.table()
-# when number of cases is too small, set Rt to NA
-county_rt_long[positive >= POS_CUTOFF & date >= START_DATE &
-                positiveIncrease >= POSINCR_CUTOFF,
-               `:=`(Rt_plot = mean_rt,
-                    Rt_upr = ci_upper,
-                    Rt_lwr = ci_lower)]
-county_rt_long[mean_rt >= 10 & positive >= POS_CUTOFF,]
+
+county_rt_long <- subset_rollmean(county_rt_long_orig)
 stopifnot(all(county_rt_long$Rt_upr >= county_rt_long$Rt_lwr, na.rm = TRUE))
+
 # make combined key for county rt long
 county_rt_long[, Combined_Key := paste(county, stateName, sep = ", ")]
 
@@ -165,10 +171,10 @@ county_rt_long <- county_rt_long[!(county %in% utah_counties_remove &
 
 county_rt_wide <- county_rt_long %>%
   select(county, stateName, UID, FIPS, date, Rt_plot, Rt_upr, Rt_lwr,
-         positive, death, Combined_Key) %>%
+         Combined_Key) %>%
   pivot_wider(id_cols = c(county, stateName, UID, FIPS, Combined_Key),
               names_from = date,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr, positive, death))
+              values_from = c(Rt_plot, Rt_upr, Rt_lwr))
 
 county_maps_new <- county_maps %>%
   select(UID, geometry) %>%
@@ -184,46 +190,39 @@ print(old_names, n = Inf)
 
 # do the merge
 county_merged <- county_maps_new %>%
-  mutate(resolution = "county", default_shown = FALSE) %>%
+  mutate(resolution = "county") %>%
   merge(county_rt_wide, by = "UID", all = FALSE) %>%
   select(-county, -stateName, -FIPS) %>%
-  select(UID, dispID = Combined_Key, resolution, default_shown,
-         starts_with("Rt_"))
+  select(UID, dispID = Combined_Key, resolution, starts_with("Rt_"))
 
 exported_counties <- data.table(UID = county_merged$UID)
 county_rt_long_export <- county_rt_long[exported_counties, on = "UID"] %>%
-  mutate(resolution = "county", default_shown = FALSE) %>%
-  select(UID, dispID = Combined_Key, date, resolution, default_shown,
-         Rt_plot, Rt_upr, Rt_lwr)
+  mutate(resolution = "county") %>%
+  select(UID, dispID = Combined_Key, date, resolution,
+         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
 ## International data
 ########################################################################
 
-global_rt_long <- fread("raw_data/jhu_global_rt.tsv", fill = TRUE)
-global_rt_long[Country_Region == "Canada",]
-global_rt_long[Country_Region == "Taiwan*",]
+global_rt_long_orig <- fread("raw_data/jhu_global_rt.tsv", fill = TRUE)
+global_rt_long_orig[Country_Region == "Canada",]
 
 # fix a typo
-global_rt_long[UID == 12406, Combined_Key := "Northwest Territories, Canada"]
+global_rt_long_orig[UID == 12406,
+                    Combined_Key := "Northwest Territories, Canada"]
 
-# when number of cases is too small, set Rt to NA
-global_rt_long <- global_rt_long[date >= START_DATE,]
-global_rt_long[positive >= POS_CUTOFF & date >= START_DATE &
-                 positiveIncrease >= POSINCR_CUTOFF,
-               `:=`(Rt_plot = mean_rt,
-                    Rt_upr = ci_upper,
-                    Rt_lwr = ci_lower)]
-global_rt_long[mean_rt >= 10 & positive >= POS_CUTOFF,]
+global_rt_long <- subset_rollmean(global_rt_long_orig)
 stopifnot(all(global_rt_long$Rt_upr >= global_rt_long$Rt_lwr, na.rm = TRUE))
 
 global_rt_wide <- global_rt_long %>%
   select(-Population, -interval_start, -FIPS, -Admin2, -positiveIncrease,
-         -deathIncrease) %>%
+         -deathIncrease, -positive, -positiveIncrease, -death) %>%
   pivot_wider(id_cols = c(UID, Province_State:Combined_Key),
               names_from = date,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr, positive, death)) %>%
+              values_from = c(Rt_plot, Rt_upr, Rt_lwr)) %>%
   data.table()
+stopifnot(uniqueN(global_rt_wide$UID) == nrow(global_rt_wide))
 
 ########################################################################
 ## Take care of provinces
@@ -233,8 +232,7 @@ province_uids <- global_rt_wide[!is.na(Province_State) &
                                  Country_Region %in% countries_w_provinces,
                                 UID]
 
-provinces_wide <- global_rt_wide[UID %in% province_uids] %>%
-  select(UID, Combined_Key, starts_with("Rt_"))
+provinces_wide <- global_rt_wide[UID %in% province_uids]
 countries_wide <- global_rt_wide[!(UID %in% province_uids)]
 
 provinces_sf_orig <- ne_states(geounit = c("Canada", "Australia", "China"),
@@ -305,14 +303,22 @@ anti_join(x2, x1, by = "UID")
 
 provinces_merged <- provinces_sf_final %>%
   select(UID, geometry) %>%
-  mutate(resolution = "state", default_shown = TRUE) %>%
   merge(provinces_wide, by = "UID", all = FALSE) %>%
-  rename(dispID = Combined_Key)
+  rename(dispID = Combined_Key) %>%
+  mutate(resolution = case_when(
+    Country_Region == "Canada" ~ "state_USA_Canada",
+    Country_Region == "China" ~ "state_China",
+    Country_Region == "Australia" ~ "state_Australia")) %>%
+  select(UID, dispID, resolution, starts_with("Rt_"))
+
 exported_provinces <- data.table(UID = provinces_merged$UID)
 provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
-  mutate(resolution = "state", default_shown = TRUE) %>%
-  select(UID, dispID = Combined_Key, date, resolution, default_shown,
-         Rt_plot, Rt_upr, Rt_lwr)
+  mutate(resolution = case_when(
+    Country_Region == "Canada" ~ "state_USA_Canada",
+    Country_Region == "China" ~ "state_China",
+    Country_Region == "Australia" ~ "state_Australia")) %>%
+  select(UID, dispID = Combined_Key, date, resolution,
+         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
 ## International countries
@@ -390,35 +396,31 @@ sf_world <- rbind(sf_world_temp, new_points) %>%
 countries_w_states_provinces <- c("US", "Canada", "Australia", "China")
 world_merged <- countries_wide %>%
   select(UID, Combined_Key, starts_with("Rt_")) %>%
-  mutate(resolution = "country",
-         default_shown = case_when(
-          Combined_Key %in% countries_w_states_provinces ~ FALSE,
-          TRUE ~ TRUE)) %>%
+  mutate(resolution = "country") %>%
   merge(sf_world, ., by = "UID", all = FALSE) %>%
   rename(dispID = Combined_Key)
 
 exported_countries <- data.table(UID = world_merged$UID)
 world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
-  mutate(resolution = "country", default_shown = TRUE) %>%
-  select(UID, dispID = Combined_Key, date, resolution, default_shown,
-         Rt_plot, Rt_upr, Rt_lwr)
+  mutate(resolution = "country") %>%
+  select(UID, dispID = Combined_Key, date, resolution,
+         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
 ## Get choices for names and export
 ########################################################################
 
 sf_all <- rbind(world_merged, provinces_merged, state_merged, county_merged)
-
 rt_long_all <- rbind(state_rt_long_export, county_rt_long_export,
                      provinces_rt_long_export, world_rt_long_export) %>%
   as_tibble()
 
 state_province_names1 <- sf_all %>%
-  filter(resolution == "state",
+  filter(startsWith(resolution, "state"),
          !(dispID %in% c("Hong Kong, China", "Macau, China"))) %>%
   select(dispID, UID)
 state_province_names2 <- sf_all %>%
-  filter(resolution == "state",
+  filter(startsWith(resolution, "state"),
          dispID %in% c("Hong Kong, China", "Macau, China")) %>%
   select(dispID, UID)
 state_province_names <- rbind(state_province_names1, state_province_names2) %>%
@@ -446,7 +448,6 @@ country_names <- sf_all %>%
   filter(resolution == "country") %>%
   select(dispID, UID) %>%
   arrange(dispID)
-
 
 names_list <- list(
   state = as.list(state_province_names$UID),
