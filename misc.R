@@ -35,9 +35,3 @@ global_rt_long[, ci_width := ci_upper - ci_lower]
 global_rt_long[positiveIncrease >= 0, ] %>%
   ggplot(aes(x = log10(1 + positiveIncrease), y = ci_width)) +
     geom_point()
-
-
-# code to profile the app
-provfis::profvis({
-  shiny::runApp()
-})
