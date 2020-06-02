@@ -9,6 +9,7 @@ library(sf)
 library(tigris)
 library(USAboundaries)
 library(rnaturalearth)
+library(rgeos)
 
 POS_CUTOFF <- 50
 POSINCR_CUTOFF <- 10
@@ -68,7 +69,8 @@ exported_states <-
   with(state_merged,
        data.table(UID = UID, stateName = substr(dispID, 1, nchar(dispID) - 5)))
 state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
-  mutate(resolution = "state", dispID = paste0(stateName, ", USA")) %>%
+  mutate(resolution = "state_USA_Canada",
+         dispID = paste0(stateName, ", USA")) %>%
   select(UID, dispID, date, resolution,
          starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
