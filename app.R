@@ -413,7 +413,7 @@ server <- function(input, output, session) {
   output$Rt_table <- DT::renderDataTable({
     date_select <- format(input$RtDate, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
-    rt_long_all %>%
+    ret_df <- rt_long_all %>%
       filter(resolution == sel_resolution, date == date_select,
              !is.na(Rt_plot)) %>%
       mutate(Rt = round(Rt_plot, 2)) %>%
@@ -421,6 +421,8 @@ server <- function(input, output, session) {
              `New Cases` = positiveIncrease, `Total Deaths` = death,
              `New Deaths` = deathIncrease) %>%
       arrange(desc(Rt))
+    validate(need(nrow(ret_df) > 0, "This data has no rows."))
+    ret_df
   })
 
   # generate the plot of Rt comparisons after user hits submit
