@@ -461,6 +461,9 @@ server <- function(input, output, session) {
     }
   })
 
+  # change map polygons when state or date changes
+  prev_grpid_state_reactive <- reactiveValues(val = "default")
+
   # explore states map
   output$explore_states_out <- renderLeaflet({
     counties_sf <- sf_by_date_res(max_date, "county", "84000025")
@@ -469,7 +472,8 @@ server <- function(input, output, session) {
     suppressWarnings(
       leaflet() %>%
         addProviderTiles(providers$Stamen.TonerLite) %>%
-        setView(-96, 37.4, 4) %>%
+        setView(-71.72, 42.06, 7) %>%
+        addPolygon_Point(counties_sf_cur, labels_final, "default") %>%
         addLegend_default(pal = pal, values = counties_sf$Rt)
     )
   })
@@ -497,8 +501,6 @@ server <- function(input, output, session) {
       setView(lng, lat, zoom_level)
   })
 
-  # change map polygons when state or date changes
-  prev_grpid_state_reactive <- reactiveValues(val = "")
   observe({
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     state_input <- input$state_select
@@ -532,6 +534,7 @@ server <- function(input, output, session) {
 
   # render heatmap of counties over time
   output$explore_states_counties <- renderCachedPlot({
+    validate(need(input$state_select, message = "Please select a state"))
     plt_data_pruned <- county_rt_long_update() %>%
       filter(!is.na(Rt_plot)) %>%
       mutate(County = factor(dispID),
@@ -563,6 +566,8 @@ server <- function(input, output, session) {
 
   # render table of county Rts at current date
   output$Rt_table_explore_states <- DT::renderDataTable({
+    validate(need(input$state_select, message = "Please select a state"))
+    validate(need(input$state_select_date, message = "Please select a state"))
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
       filter(date == date_select) %>%
