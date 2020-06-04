@@ -475,7 +475,7 @@ server <- function(input, output, session) {
       leaflet() %>%
         addProviderTiles(providers$Stamen.TonerLite) %>%
         setView(-71.72, 42.06, 7) %>%
-        addPolygon_Point(counties_sf_cur, labels_final, "default") %>%
+        addPolygon_Point(counties_sf, labels_final, "default") %>%
         addLegend_default(pal = pal, values = counties_sf$Rt)
     )
   })
