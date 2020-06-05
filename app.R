@@ -267,7 +267,7 @@ ui <- fluidPage(
         mainPanel(
           leafletOutput("RtMap", height = "80vh", width = "100%"),
           h4("Table of Rts for Current Date and Resolution"),
-          DT::dataTableOutput("Rt_table")
+          DT::DTOutput("Rt_table")
         )
       ) # end of sidebarLayout
     ), # end of tabPanel
@@ -323,7 +323,7 @@ ui <- fluidPage(
       ),
       fluidRow(
         h4("Table of Rts for selected date"),
-        DT::dataTableOutput("Rt_table_explore_states")
+        DT::DTOutput("Rt_table_explore_states")
       )
     ), # end of tabPanel
     # Fourth tab: About page
@@ -424,7 +424,7 @@ server <- function(input, output, session) {
   }, cacheKeyExpr = { input$RtMap_shape_click$id })
 
   # Table of current Rts at current resolution
-  output$Rt_table <- DT::renderDataTable({
+  output$Rt_table <- DT::renderDT({
     date_select <- format(input$RtDate, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
     ret_df <- rt_long_all %>%
@@ -436,7 +436,7 @@ server <- function(input, output, session) {
       arrange(desc(Rt))
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
-  })
+  }, server = FALSE)
 
   # generate the plot of Rt comparisons after user hits submit
   compare_plt <- eventReactive(input$compare_submit, {
@@ -583,7 +583,7 @@ server <- function(input, output, session) {
   }, cacheKeyExpr = { input$state_select })
 
   # render table of county Rts at current date
-  output$Rt_table_explore_states <- DT::renderDataTable({
+  output$Rt_table_explore_states <- DT::renderDT({
     validate(need(input$state_select, message = "Please select a state"))
     validate(need(input$state_select_date, message = "Please select a state"))
     date_select <- format(input$state_select_date, "%Y-%m-%d")
@@ -594,7 +594,7 @@ server <- function(input, output, session) {
              `New Cases` = positiveIncrease, `Total Deaths` = death,
              `New Deaths` = deathIncrease) %>%
       arrange(desc(Rt))
-  })
+  }, server = FALSE)
 
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
   # this to allow the user to be automatically connected
