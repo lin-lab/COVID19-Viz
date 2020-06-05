@@ -327,7 +327,11 @@ ui <- fluidPage(
         h4("Table of Rts for selected date"),
         DT::dataTableOutput("Rt_table_explore_states")
       )
-    ) # end of tabPanel
+    ), # end of tabPanel
+    # Fourth tab: About page
+    tabPanel("About",
+      includeMarkdown("assets/about.md")
+    )
   ) # end of tabsetPanel
 ) # end of fluidPage
 
