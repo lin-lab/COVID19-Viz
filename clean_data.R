@@ -11,14 +11,11 @@ library(USAboundaries)
 library(rnaturalearth)
 library(rgeos)
 
-POS_CUTOFF <- 50
-POSINCR_CUTOFF <- 10
-START_DATE <- ymd("2020-03-19")
-
+#'
+#'
 subset_rollmean <- function(dt, group_var = "UID", window_size = 7,
-                            pos_cutoff = POS_CUTOFF,
-                            posincr_cutoff = POSINCR_CUTOFF,
-                            start_date = START_DATE) {
+                            pos_cutoff = 50, posincr_cutoff = 10,
+                            start_date = ymd("2020-03-19")) {
   dt[positiveIncrease <= 0, posIncr_trunc := 0]
   dt[positiveIncrease > 0, posIncr_trunc := positiveIncrease]
   dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
@@ -27,6 +24,9 @@ subset_rollmean <- function(dt, group_var = "UID", window_size = 7,
   ret <- dt[date >= start_date & !is.na(rolling_posIncr)]
   ret[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
       `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
+  ret[positive >= pos_cutoff & rolling_posIncr < posincr_cutoff,
+      Rt_plot := -88]
+  ret[positive < pos_cutoff, Rt_plot := -888]
   return(ret)
 }
 

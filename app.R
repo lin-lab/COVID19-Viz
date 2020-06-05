@@ -45,10 +45,15 @@ names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
 ########################################################################
 
 # bins and colors for the map
-bins <- c(0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2, 5, Inf)
+bins <- c(-Inf, -100, 0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2, 5, Inf)
 rt_range <- range(rt_long_all$Rt_plot, na.rm = TRUE)
-pal_default <- partial(colorBin, palette = "RdYlBu", bins = bins,
-                       reverse = TRUE)
+colors_default = c("#696969", "#9e9e9e", "#4575b4", "#74add1", "#abd9e9",
+                   "#e0f3f8", "#ffffbf", "#fee090", "#fdae61", "#f46d43",
+                   "#d73027")
+color_labels <- c("Insufficient cases", "Insufficient new cases", "0.00 - 0.25",
+                  "0.25 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
+                  "1.25 - 1.50", "1.50 - 2.00", "2 - 5", ">5")
+pal_default <- partial(colorBin, palette = colors_default, bins = bins)
 
 # set up defaults for adding stuff to leaflet maps
 addPolygons_default <-
@@ -91,11 +96,16 @@ rt_labeller <- function(sf_dat) {
   stopifnot(names(sf_dat) == c("Rt", "Rt_lwr", "Rt_upr", "UID",
                                "dispID", "geometry"))
   rt_col <- sf_dat[["Rt"]]
-  na_rt <- is.na(rt_col)
-  rt_str <- ifelse(na_rt, "Insufficient data",
-                   sprintf("Rt: %0.2f (%0.2f - %0.2f)",
-                           rt_col, sf_dat[["Rt_lwr"]],
-                           sf_dat[["Rt_upr"]]))
+  total_case_idx <- which(rt_col <= -100)
+  new_case_idx <- which(0 > rt_col & rt_col > -100)
+  rt_idx <- which(rt_col >= 0)
+  rt_str <- rep(NA, length(rt_col))
+  rt_str[total_case_idx] <- "Insufficient total cases"
+  rt_str[new_case_idx] <- "Insufficient new cases"
+  rt_str[rt_idx] <- sprintf("Rt: %0.2f (%0.2f - %0.2f)",
+                            rt_col[rt_idx],
+                            sf_dat$Rt_lwr[rt_idx],
+                            sf_dat$Rt_upr[rt_idx])
   return(rt_str)
 }
 
@@ -414,8 +424,7 @@ server <- function(input, output, session) {
     date_select <- format(input$RtDate, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
     ret_df <- rt_long_all %>%
-      filter(resolution == sel_resolution, date == date_select,
-             !is.na(Rt_plot)) %>%
+      filter(resolution == sel_resolution, date == date_select, Rt_plot > 0) %>%
       mutate(Rt = round(Rt_plot, 2)) %>%
       select(Location = dispID, Rt, `Total Cases` = positive,
              `New Cases` = positiveIncrease, `Total Deaths` = death,
@@ -434,12 +443,15 @@ server <- function(input, output, session) {
     selected_uids <- data.frame(
       UID = as.double(c(selected_states, selected_counties, selected_countries))
     )
-    if (nrow(selected_uids) == 0) {
-      return()
-    }
+
+    req(nrow(selected_uids) > 0)
 
     plt_data_compare <- inner_join(rt_long_all, selected_uids, by = "UID") %>%
+      filter(Rt_plot > 0) %>%
       rename(Rt = Rt_plot, Location = dispID)
+
+    validate(need(nrow(plt_data_compare) > 0,
+                  "Insufficient data for selected locations."))
     ylim_max <- ceiling(max(plt_data_compare$Rt_upr))
     p <- na.omit(plt_data_compare) %>%
       rename(Date = date) %>%
@@ -538,12 +550,12 @@ server <- function(input, output, session) {
   output$explore_states_counties <- renderCachedPlot({
     validate(need(input$state_select, message = "Please select a state"))
     plt_data_pruned <- county_rt_long_update() %>%
-      filter(!is.na(Rt_plot)) %>%
-      mutate(County = factor(dispID),
-             `Rt Bins` = cut(Rt_plot, breaks = bins,
+      mutate(`Rt Bins` = cut(Rt_plot, breaks = bins, labels = color_labels,
                              include.lowest = TRUE, right = FALSE)) %>%
+      filter(Rt_plot > 0) %>%
+      mutate(County = factor(dispID)) %>%
       rename(Rt = Rt_plot)
-    color_pal <- rev(brewer.pal(9, "RdYlBu"))
+    color_pal <- colors_default
     names(color_pal) <- levels(plt_data_pruned$`Rt Bins`)
 
     plt_title <- sprintf("Rt for %s Counties Over Time",
@@ -573,7 +585,7 @@ server <- function(input, output, session) {
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
       filter(date == date_select) %>%
-      mutate(Rt = round(Rt_plot, 2)) %>%
+      mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA)) %>%
       select(Location = dispID, Rt, `Total Cases` = positive,
              `New Cases` = positiveIncrease, `Total Deaths` = death,
              `New Deaths` = deathIncrease) %>%
