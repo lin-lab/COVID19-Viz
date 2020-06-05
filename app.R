@@ -76,9 +76,6 @@ addCircles_default <-
             weight = 5, color = "#666", dashArray = "",
             fillOpacity = 0.7, bringToFront = TRUE))
 
-addLegend_default <- partial(addLegend, position = "bottomright",
-                             opacity = 0.75, title = "Rt")
-
 # get range of possible dates
 dates <- unique(rt_long_all$date)
 min_date <- min(dates)
@@ -268,7 +265,7 @@ ui <- fluidPage(
           plotOutput("RtOverTime")
         ), # end of sidebarPanel
         mainPanel(
-          leafletOutput("RtMap", height = "90vh", width = "100%"),
+          leafletOutput("RtMap", height = "80vh", width = "100%"),
           h4("Table of Rts for Current Date and Resolution"),
           DT::dataTableOutput("Rt_table")
         )
@@ -280,6 +277,7 @@ ui <- fluidPage(
         sidebarPanel(
           h4("Select areas to compare their Rt."),
           p("Double click on an area in the legend to isolate its Rt curve."),
+          p("Some areas may not appear in the plot because of insufficient data."),
           # break up the selection by state, county, and country
           selectizeInput("compare_sel_states", label = "States/Provinces",
                          choices = place_choices$state,
@@ -344,13 +342,15 @@ server <- function(input, output, session) {
 
   # The basic big Rt map
   output$RtMap <- renderLeaflet({
-    sf_dat_init <- sf_by_date_res(max_date, "country")
-    pal <- pal_default(domain = sf_dat_init$Rt)
     suppressWarnings(
-      leaflet() %>%
+      leaflet(options = list(worldCopyJump = TRUE)) %>%
         setView(0, 0, 2) %>%
-        addProviderTiles(providers$Stamen.TonerLite) %>%
-        addLegend_default(pal = pal, values = sf_dat_init$Rt)
+        setMaxBounds(-180, -90, 180, 90) %>%
+        addProviderTiles(providers$Stamen.TonerLite,
+                         options = providerTileOptions(minZoom = 1,
+                                                       noWrap = TRUE)) %>%
+        addLegend(colors = colors_default, labels = color_labels,
+                  opacity = 0.7, title = "Rt", position = "bottomleft")
     )
   })
 
@@ -417,7 +417,7 @@ server <- function(input, output, session) {
         geom_smooth(method = "loess", se = TRUE, formula = y ~ x) +
         xlab("Date") + ylab("Rt") + ggtitle(plt_title) +
         ylim(0, ylim_max) + geom_hline(yintercept = 1, lty = 2) +
-        theme_cowplot() + scale_x_date(date_minor_breaks = "1 day") +
+        theme_cowplot() +
         background_grid(major = "xy", minor = "xy")
       suppressWarnings(print(p))
     }
@@ -473,10 +473,8 @@ server <- function(input, output, session) {
   # render it as a plotly object
   output$compare_plt_out <- renderPlotly({
     x <- suppressWarnings(compare_plt())
-    if (!is.null(x)) {
-      suppressWarnings(with_options(options(digits = 3),
-                                    ggplotly(x, tooltip = c("x", "y", "fill"))))
-    }
+    suppressWarnings(with_options(options(digits = 3),
+                                  ggplotly(x, tooltip = c("x", "y", "fill"))))
   })
 
   # change map polygons when state or date changes
@@ -488,11 +486,14 @@ server <- function(input, output, session) {
     labels_final <- master_labeller(counties_sf, max_date)
     pal <- pal_default(domain = counties_sf$Rt)
     suppressWarnings(
-      leaflet() %>%
-        addProviderTiles(providers$Stamen.TonerLite) %>%
+      leaflet(options = list(worldCopyJump = FALSE)) %>%
+        addProviderTiles(providers$Stamen.TonerLite,
+                         options = providerTileOptions(minZoom = 3)) %>%
         setView(-71.72, 42.06, 7) %>%
-        addPolygon_Point(counties_sf, labels_final, "default") %>%
-        addLegend_default(pal = pal, values = counties_sf$Rt)
+        setMaxBounds(-180, -90, 180, 90) %>%
+        addPolygon_Point(counties_sf, labels_final, "default") #%>%
+        #addLegend(colors = colors_default, labels = color_labels,
+        #          opacity = 0.7, title = "Rt", position = "bottomleft")
     )
   })
 
@@ -570,9 +571,8 @@ server <- function(input, output, session) {
         geom_tile(alpha = 0.7) +
         scale_fill_manual(drop = FALSE, values = color_pal) +
         xlab("Date") + ylab("County") + ggtitle(plt_title) +
-        theme_cowplot() + scale_x_date(date_minor_breaks = "1 day") +
+        theme_cowplot() +
         scale_y_discrete(limits = rev(levels(plt_data_pruned$County))) +
-        background_grid(major = "xy", minor = "xy") +
         theme(axis.text.y = element_text(size = 10),
               legend.text = element_text(size = 12))
     } else {
