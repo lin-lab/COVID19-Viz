@@ -17,7 +17,6 @@ library(cowplot)
 library(htmltools)
 library(purrr)
 library(dplyr)
-library(plotly)
 library(withr)
 library(data.table)
 library(RColorBrewer)
@@ -243,6 +242,7 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
 
 ui <- fluidPage(
   tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}"),
+  tags$head(tags$style(type = "text/css", "body {font-size: 16px}")),
   titlePanel("Visualizing COVID-19 Rate of Spread (Rt)"),
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
@@ -276,7 +276,6 @@ ui <- fluidPage(
       sidebarLayout(
         sidebarPanel(
           h4("Select areas to compare their Rt."),
-          p("Double click on an area in the legend to isolate its Rt curve."),
           p("Some areas may not appear in the plot because of insufficient data."),
           # break up the selection by state, county, and country
           selectizeInput("compare_sel_states", label = "States/Provinces",
@@ -291,7 +290,7 @@ ui <- fluidPage(
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
-          plotlyOutput("compare_plt_out", height = "90vh", width = "100%")
+          plotOutput("compare_plt_out", height = "70vh", width = "100%")
         )
       ) # end of sideBarLayout
     ), # end of tabPanel
@@ -374,6 +373,8 @@ server <- function(input, output, session) {
   sf_dat_update <- reactive({
     date_select <- format(input$RtDate, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
+    validate(need(date_select, "Please select a date."))
+    validate(need(sel_resolution, "Please select a resolution."))
     sf_by_date_res(date_select, sel_resolution)
   })
 
@@ -384,17 +385,19 @@ server <- function(input, output, session) {
   observe({
     date_select <- format(input$RtDate, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
+    validate(need(date_select, "Please select a date."))
+    validate(need(sel_resolution, "Please select a resolution."))
     sf_dat_cur <- sf_dat_update()
     labels_final <- master_labeller(sf_dat_cur, date_select)
     cur_grpid <- digest::digest(c(date_select, sel_resolution))
     prev_grpid <- prev_grpid_all_reactive$val
     map <- leafletProxy("RtMap", data = sf_dat_cur)
     if (prev_grpid != cur_grpid) {
-      suppressWarnings(
+      suppressWarnings({
         map <- map %>%
           addPolygon_Point(sf_dat_cur, labels_final, cur_grpid) %>%
           clearGroup(prev_grpid)
-      )
+      })
     }
     prev_grpid_all_reactive$val <- cur_grpid
     map
@@ -403,7 +406,7 @@ server <- function(input, output, session) {
   # Rt over time based on click
   output$RtOverTime <- renderCachedPlot({
     validate(need(input$RtMap_shape_click,
-                  message = "Click on a location to show its Rt over time"))
+                  message = "Click on a location to show its Rt over time."))
     click <- input$RtMap_shape_click
     sel_resolution <- input$select_resolution
     plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
@@ -427,6 +430,9 @@ server <- function(input, output, session) {
   output$Rt_table <- DT::renderDT({
     date_select <- format(input$RtDate, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
+    validate(need(date_select, "Please select a date."))
+    validate(need(sel_resolution, "Please select a resolution."))
+
     ret_df <- rt_long_all %>%
       filter(resolution == sel_resolution, date == date_select, Rt_plot > 0) %>%
       mutate(Rt = round(Rt_plot, 2)) %>%
@@ -438,8 +444,8 @@ server <- function(input, output, session) {
     ret_df
   }, server = FALSE)
 
-  # generate the plot of Rt comparisons after user hits submit
-  compare_plt <- eventReactive(input$compare_submit, {
+  # get data to plot for Rt comparison
+  plt_dat_compare <- eventReactive(input$compare_submit, {
     # get all the UIDs in a data frame and join them with rt long to select
     selected_states <- input$compare_sel_states
     selected_counties <- input$compare_sel_counties
@@ -450,31 +456,30 @@ server <- function(input, output, session) {
 
     req(nrow(selected_uids) > 0)
 
-    plt_data_compare <- inner_join(rt_long_all, selected_uids, by = "UID") %>%
-      filter(Rt_plot > 0) %>%
-      rename(Rt = Rt_plot, Location = dispID)
+    inner_join(rt_long_all, selected_uids, by = "UID") %>%
+      filter(Rt_plot > 0)
+  })
 
-    validate(need(nrow(plt_data_compare) > 0,
+  # generate the plot of Rt comparisons after user hits submit
+  output$compare_plt_out <- renderPlot({
+    cur_dat <- plt_dat_compare()
+    validate(need(nrow(cur_dat) > 0,
                   "Insufficient data for selected locations."))
-    ylim_max <- ceiling(max(plt_data_compare$Rt_upr))
-    p <- na.omit(plt_data_compare) %>%
-      rename(Date = date) %>%
-      ggplot(aes(x = Date, y = Rt, color = Location, fill = Location)) +
+    ylim_max <- ceiling(max(cur_dat$Rt_upr))
+
+    p <- cur_dat %>%
+      ggplot(aes(x = date, y = Rt_plot, color = dispID, fill = dispID)) +
       geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr), alpha = 0.2) +
       geom_line() + geom_point() + xlab("Date") + ylab("Rt") +
       ggtitle("Comparison of Rt") + ylim(0, ylim_max) +
       geom_hline(yintercept = 1, lty = 2) +
-      scale_x_date(date_minor_breaks = "1 day") +
+      scale_color_discrete(name = "Location") +
+      scale_fill_discrete(name = "Location") +
       theme_cowplot() +
-      background_grid(major = "xy", minor = "xy")
-    p
-  })
+      theme(text = element_text(size = 18),
+            axis.text = element_text(size = 15))
 
-  # render it as a plotly object
-  output$compare_plt_out <- renderPlotly({
-    x <- suppressWarnings(compare_plt())
-    suppressWarnings(with_options(options(digits = 3),
-                                  ggplotly(x, tooltip = c("x", "y", "fill"))))
+    suppressWarnings(p)
   })
 
   # change map polygons when state or date changes
@@ -491,9 +496,7 @@ server <- function(input, output, session) {
                          options = providerTileOptions(minZoom = 3)) %>%
         setView(-71.72, 42.06, 7) %>%
         setMaxBounds(-180, -90, 180, 90) %>%
-        addPolygon_Point(counties_sf, labels_final, "default") #%>%
-        #addLegend(colors = colors_default, labels = color_labels,
-        #          opacity = 0.7, title = "Rt", position = "bottomleft")
+        addPolygon_Point(counties_sf, labels_final, "default")
     )
   })
 
@@ -501,7 +504,8 @@ server <- function(input, output, session) {
   county_sf_update <- reactive({
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     state_input <- input$state_select
-    validate(need(input$state_select, "Please choose a state"))
+    validate(need(input$date_select, "Please select a date using the slider."))
+    validate(need(input$state_select, "Please choose a state."))
     sf_by_date_res(date_select, "county", state_input)
   })
 
@@ -523,7 +527,8 @@ server <- function(input, output, session) {
   observe({
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     state_input <- input$state_select
-    validate(need(input$state_select, "Please choose a state"))
+    validate(need(input$date_select, "Please choose a date using the slider."))
+    validate(need(input$state_select, "Please choose a state."))
 
     counties_sf_cur <- county_sf_update()
     labels_final <- master_labeller(counties_sf_cur, date_select)
@@ -532,11 +537,11 @@ server <- function(input, output, session) {
     prev_grpid <- prev_grpid_state_reactive$val
     map_state <- leafletProxy("explore_states_out", data = counties_sf_cur)
     if (prev_grpid != cur_grpid) {
-      suppressWarnings(
+      suppressWarnings({
         map_state <- map_state %>%
         addPolygon_Point(counties_sf_cur, labels_final, cur_grpid) %>%
         clearGroup(prev_grpid)
-      )
+      })
     }
     prev_grpid_state_reactive$val <- cur_grpid
     map_state
@@ -544,7 +549,7 @@ server <- function(input, output, session) {
 
   # update county_rt_long data frame
   county_rt_long_update <- reactive({
-    validate(need(input$state_select, message = "Please select a state"))
+    validate(need(input$state_select, message = "Please select a state."))
     county_uids <- get_county_uids(input$state_select)
     rt_long_all %>%
       filter((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
@@ -553,7 +558,7 @@ server <- function(input, output, session) {
 
   # render heatmap of counties over time
   output$explore_states_counties <- renderCachedPlot({
-    validate(need(input$state_select, message = "Please select a state"))
+    validate(need(input$state_select, message = "Please select a state."))
     plt_data_pruned <- county_rt_long_update() %>%
       mutate(`Rt Bins` = cut(Rt_plot, breaks = bins, labels = color_labels,
                              include.lowest = TRUE, right = FALSE)) %>%
@@ -584,8 +589,8 @@ server <- function(input, output, session) {
 
   # render table of county Rts at current date
   output$Rt_table_explore_states <- DT::renderDT({
-    validate(need(input$state_select, message = "Please select a state"))
-    validate(need(input$state_select_date, message = "Please select a state"))
+    validate(need(input$state_select, message = "Please select a state."))
+    validate(need(input$state_select_date, message = "Please select a state."))
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
       filter(date == date_select) %>%
