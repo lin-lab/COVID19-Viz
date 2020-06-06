@@ -1,96 +1,110 @@
+----
+fontsize:12pt
+----
 
 ## Website Usage
 
-**Rt map tab**: This tab shows a map of the Rt by date for various
-resolutions. Change the date by adjusting the slider. Change the
-resolution (Country, US states, US counties, Canadian/Chinese/Australian
-provinces) using the resolution dropdown menu, and click on a location
-to see a line graph of the Rt over time. You can scroll to change the
-zoom of the map and click-drag to move the map around. Below the map,
-there is a table of Rts for the chosen date and resolution. This table
-is by default sorted in descending order of Rt, but the sorting can be
-changed by clicking a column header. Locations where Rt could not be
-calculated are colored gray in the map and not shown in the table (see
-Rt Method Description for more info).
+**Rt map tab**: This tab shows a map of the Rt by date for various resolutions.
+Change the date by adjusting the slider. Change the resolution (Country, US
+states, US counties, Canadian/Chinese/Australian provinces) using the resolution
+dropdown menu, and click on a location to see a line graph of the Rt over time.
+You can scroll to change the zoom of the map and click-drag to move the map
+around. Below the map, there is a table of Rts for the chosen date and
+resolution. This table is by default sorted in descending order of Rt, but the
+sorting can be changed by clicking a column header. Locations where Rt could not
+be calculated are colored gray in the map and not shown in the table (see Rt
+Method Description for more info).
 
-Technical note: the blue line is a fitted loess curve to the Rt points,
-and the error bars show the 95% posterior interval of Rt for that time
-point.
+Technical note: the blue line is a fitted loess curve to the Rt points, and the
+error bars show the 95% posterior interval of Rt for that time point.
 
-**Compare Rt tab**: Select states/provinces, US counties, and countries
-to compare their Rt over time. You can select a location by using the
-dropdown menu. You can also type the name of the location. Multiple
-locations for each category (states/provinces, counties, and countries)
-can be chosen. After you click submit, the results will be displayed as
-a line plot. Double-clicking a location on the right side of the plot
-will show only its Rt curve---this can be undone by double-clicking
-again. Single-clicking will remove a location’s Rt curve from the
-display---this can be undone by single-clicking again. Some areas may
-not appear in the plot because of insufficient data (see Rt Method
-Description for more info).
+**Compare Rt tab**: Select states/provinces, US counties, and countries to
+compare their Rt over time. You can select a location by using the dropdown
+menu. You can also type the name of the location. Multiple locations for each
+category (states/provinces, counties, and countries) can be chosen. After you
+click submit, the results will be displayed as a line plot. Some areas may not
+appear in the plot because of insufficient data (see Rt Method Description for
+more info).
 
-**Explore States tab**: This tab shows an overview for all the counties
-in a selected state. The plot on the left shows the change in Rt over
-time for counties where Rt was able to be calculated. The map on the
-right shows the Rt for the counties in the state for a selected date.
-The date can be adjusted using the slider, and an animation can be shown
-by clicking the blue “play” button. You can zoom in and out by scrolling
-and you can move the map by clicking and dragging. Below the map, there
-is a table of Rt for the date selected using the slider. This table is
-by default sorted in descending order of Rt, but the sorting can be
-changed by clicking a column header.
+**Explore States tab**: This tab shows an overview for all the counties in a
+selected state. The plot on the left shows the change in Rt over time for
+counties where Rt was able to be calculated. The map on the right shows the Rt
+for the counties in the state for a selected date. The date can be adjusted
+using the slider, and an animation can be shown by clicking the blue “play”
+button. You can zoom in and out by scrolling and you can move the map by
+clicking and dragging. Below the map, there is a table of Rt for the date
+selected using the slider. This table is by default sorted in descending order
+of Rt, but the sorting can be changed by clicking a column header.
 
 ## Rt Method Description
 
-We calculate and report the daily effective reproduction number
-(Rt) to characterize the virus spread, defined as the expected number of
-secondary infectious cases produced by a primary infectious case. Rt is
-used to determine the potential for epidemic spread at a specific time t
-under the control measures in place (Figure 1, Inglesby, T.V., 2020,
-reproduced below). If Rt > 1, the virus will spread out and the disease
-will become an epidemic; if Rt = 1, the virus will spread locally and
-the disease is endemic; if Rt < 1, the virus will stop spreading and the
-disease will disappear eventually.
+We calculate and report the daily effective reproduction number (Rt) to
+characterize the virus spread, defined as the expected number of secondary
+infectious cases produced by a primary infectious case. Rt is used to determine
+the potential for epidemic spread at a specific time t under the control
+measures in place (Figure 1, [Inglesby, T.V.,
+2020](https://doi.org/10.1001/jama.2020.7878), reproduced below). If Rt >
+1, the virus will spread out and the disease will become an epidemic; if Rt = 1,
+the virus will spread locally and the disease is endemic; if Rt < 1, the virus
+will stop spreading and the disease will disappear eventually.
 
 <img src="Rt_explanation.png" alt="Figure 1: Explanation of Rt", width="800" />
 
-To obtain the Rt estimate, different methods could be considered (Cori,
-A., et al., 2013; Thompson, R.N., et al., 2019; Walllinga, J. and
-Teunis, P., 2004; Zhang, J., et al., 2020). Here we focused on using the
-EpiEstim method (Cori, A., et al., 2013; Thompson, R.N., et al., 2019)
-to estimate the daily Rt value. The EpiEstim method requires the
-following inputs (and outputs the daily Rt estimates):
+To obtain the Rt estimate, different methods could be considered
+([Cori, A., et al., 2013](https://doi.org/10.1093/aje/kwt133);
+[Thompson, R.N., et al., 2019](https://doi.org/10.1016/j.epidem.2019.100356);
+[Walllinga, J. and Teunis, P., 2004](https://doi.org/10.1093/aje/kwh255);
+[Zhang, J., et al., 2020](https://doi.org/10.1016/S1473-3099%2820%2930230-9)).
+Here we focused on using the EpiEstim method (Cori, A., et al., 2013; Thompson,
+R.N., et al., 2019) to estimate the daily Rt value. The EpiEstim method requires
+the following inputs (and outputs the daily Rt estimates):
 
-+ Daily positive increase cases: we used data from Johns Hopkins
-  University the Center for Systems Science and Engineering (JHU-CSSE)
-  [Coronavirus Resource
-  Center](https://github.com/CSSEGISandData/COVID-19) (Dong, E., et al,
-  2020).
++ Daily positive increase cases: we used data from Johns Hopkins University the
+  Center for Systems Science and Engineering (JHU-CSSE) [Coronavirus Resource
+  Center](https://github.com/CSSEGISandData/COVID-19) ([Dong, E., et al, 2020](https://doi.org/10.1016/S1473-3099%2820%2930120-1)).
 
-+ The time window of daily positive increase cases to be averaged
-  (to smooth out the discreteness due to reporting). For our analysis, a
-  7-day window was used by default.
++ The time window of daily positive increase cases to be averaged (to smooth out
+  the discreteness due to reporting). For our analysis, a 7-day window was used
+  by default.
 
-+ The input parameter values of the distribution of the disease serial
-  interval: We used a Gamma distribution with a mean of 5.2 days and a
-  standard deviation of 5.1 days (He, X., et al, 2020).
++ The input parameter values of the distribution of the disease serial interval:
+  We used a Gamma distribution with a mean of 5.2 days and a standard deviation
+  of 5.1 days ([He, X., et al, 2020](https://doi.org/10.1038/s41591-020-0869-5)).
 
-We are also performing sensitivity analyses using different methods
-(Walllinga, J. and Teunis, P., 2004; Zhang, J., et al., 2020) to
-evaluate the robustness of Rt estimates obtained from EpiEstim and these
-methods.
+We are also performing sensitivity analyses using different methods (Walllinga,
+J. and Teunis, P., 2004; Zhang, J., et al., 2020) to evaluate the robustness of
+Rt estimates obtained from EpiEstim and these methods.
 
-We obtained Rt estimates for each day since March 19, 2020 for each
-country in the JHU dataset. We also state/province level daily Rt
-estimates for the USA, Australia, Canada, and China, as well as
-county-level daily Rt estimates for the US.
+We obtained Rt estimates for each day since March 19, 2020 for each country in
+the JHU dataset. We also state/province level daily Rt estimates for the USA,
+Australia, Canada, and China, as well as county-level daily Rt estimates for the
+US.
 
-Rt estimation becomes unstable when there are only a few new cases per
-day or when the total number of cases is small. Because of low
-population size or lack of reporting, this is the case for many rural
-counties in the US as well as many countries with underdeveloped
-healthcare infrastructure. Therefore, we do not show the Rt value when
-this is the case.
+Rt estimation becomes unstable when there are only a few new cases per day or
+when the total number of cases is small. Because of low population size or lack
+of reporting, this is the case for many rural counties in the US as well as many
+countries with underdeveloped healthcare infrastructure. We do not show the Rt
+value on days where the total number of cases is less than 50 or on days where
+the average number of new cases in a 7-day window centered on the date of
+interest is below 10.
+
+## Code Availability
+
++ Website code:
+[https://github.com/lin-lab/COVID19-Viz](https://github.com/lin-lab/COVID19-Viz)
++ Rt Calculation code: Github link forthcoming.
++ COVID-19 data cleaning code: [https://github.com/lin-lab/COVID-data-cleaning](https://github.com/lin-lab/COVID-data-cleaning)
+
+## Credits
+
+This website and the associated Rt analysis was developed by [Xihong Lin's
+Group](https://content.sph.harvard.edu/xlin/software.html) in the [Department of
+Biostatistics](https://www.hsph.harvard.edu/biostatistics/) at the [Harvard Chan
+School of Public Health](https://www.hsph.harvard.edu/).
+
++ Website development: Andy Shi
++ Rt Calculation: Sheila Gaynor
++ Sensitivity Analysis: Xihao Li, Hui Li, Zilin Lin, Derek Shyr
 
 
 ## References
