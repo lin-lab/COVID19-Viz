@@ -503,19 +503,6 @@ server <- function(input, output, session) {
     )
   })
 
-  get_state_lnglat <- reactive({
-    state_input <- input$state_select
-    validate(need(input$state_select, "Please choose a state."))
-    counties_sf_cur <- county_sf_update()
-    counties_bbox <- st_bbox(counties_sf_cur)
-    lng <- mean(c(counties_bbox["xmin"], counties_bbox["xmax"]))
-    lat <- mean(c(counties_bbox["ymin"], counties_bbox["ymax"]))
-    if (state_input == "84000002") {
-      lng <- -147
-    }
-    c(lng, lat)
-  })
-
   # change zoom level only when state changes
   observe({
     state_input <- input$state_select
