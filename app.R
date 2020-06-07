@@ -246,7 +246,7 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
 ui <- fluidPage(
   tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}"),
   tags$head(tags$style(type = "text/css", "body {font-size: 16px}")),
-  titlePanel("Visualizing COVID-19 Rate of Spread (Rt)"),
+  titlePanel("Visualizing COVID-19's Effective Reproduction Number (Rt)"),
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
     tabPanel("Rt Map",
@@ -346,7 +346,7 @@ server <- function(input, output, session) {
   output$RtMap <- renderLeaflet({
     suppressWarnings(
       leaflet(options = list(worldCopyJump = TRUE)) %>%
-        setView(0, 0, 2) %>%
+        setView(0, 30, 2) %>%
         setMaxBounds(-180, -90, 180, 90) %>%
         addProviderTiles(providers$Stamen.TonerLite,
                          options = providerTileOptions(minZoom = 1,
@@ -364,7 +364,7 @@ server <- function(input, output, session) {
       "state_China" = c(104.4, 34.7, 4),
       "state_Australia" = c(135.5, -26.1, 4),
       "county" = c(-96, 37.8, 4),
-      "country" = c(0, 0, 2)
+      "country" = c(0, 30, 2)
     )
     suppressWarnings(
       leafletProxy("RtMap") %>%
