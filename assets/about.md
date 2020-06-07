@@ -50,6 +50,9 @@ will stop spreading and the disease will disappear eventually.
 
 <img src="Rt_explanation.png" alt="Figure 1: Explanation of Rt", width="800" />
 
+Figure credit: Thomas V. Inglesby, MD ([Inglesby, T.V.,
+2020](https://doi.org/10.1001/jama.2020.7878))
+
 To obtain the Rt estimate, different methods could be considered
 ([Cori, A., et al., 2013](https://doi.org/10.1093/aje/kwt133);
 [Thompson, R.N., et al., 2019](https://doi.org/10.1016/j.epidem.2019.100356);
@@ -107,6 +110,17 @@ School of Public Health](https://www.hsph.harvard.edu/).
 + Sensitivity Analysis: Xihao Li, Hui Li, Zilin Lin, Derek Shyr
 + Special thanks to Evan Sarmiento and the team at Harvard IQSS for help with
   hosting.
+
+## Contact Us
+
++ If you have a question about the website, please write to us at
+  `linlab.covid19.analysis@gmail.com`.
+
++ If you found a bug on the website, please [create an issue on
+  Github](https://github.com/lin-lab/COVID19-Viz/issues).
+
++ If you have a bug fix or new feature to add, please create a pull request on
+  Github.
 
 
 ## References
