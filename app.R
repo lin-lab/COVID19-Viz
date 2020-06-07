@@ -35,6 +35,9 @@ rt_long_all <- readRDS("clean_data/rt_long_all.rds")
 # choices for each place
 place_choices <- readRDS("clean_data/names_list.rds")
 
+# state centers
+state_centers <- readRDS("clean_data/state_centers.rds")
+
 # map state UIDs to place name
 state_uid_to_place <- as.list(names(place_choices$us_state))
 names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
@@ -500,19 +503,9 @@ server <- function(input, output, session) {
     )
   })
 
-  # update county data
-  county_sf_update <- reactive({
-    date_select <- format(input$state_select_date, "%Y-%m-%d")
+  get_state_lnglat <- reactive({
     state_input <- input$state_select
-    validate(need(input$date_select, "Please select a date using the slider."))
     validate(need(input$state_select, "Please choose a state."))
-    sf_by_date_res(date_select, "county", state_input)
-  })
-
-  # change zoom level only when state changes
-  observe({
-    state_input <- input$state_select
-    zoom_level <- set_state_zoom(state_input)
     counties_sf_cur <- county_sf_update()
     counties_bbox <- st_bbox(counties_sf_cur)
     lng <- mean(c(counties_bbox["xmin"], counties_bbox["xmax"]))
@@ -520,17 +513,26 @@ server <- function(input, output, session) {
     if (state_input == "84000002") {
       lng <- -147
     }
+    c(lng, lat)
+  })
+
+  # change zoom level only when state changes
+  observe({
+    state_input <- input$state_select
+    zoom_level <- set_state_zoom(state_input)
+    lnglat <- state_centers[[state_input]]
     leafletProxy("explore_states_out") %>%
-      setView(lng, lat, zoom_level)
+      setView(lnglat[1], lnglat[2], zoom_level)
   })
 
   observe({
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     state_input <- input$state_select
-    validate(need(input$date_select, "Please choose a date using the slider."))
+    validate(need(input$state_select_date,
+                  "Please choose a date using the slider."))
     validate(need(input$state_select, "Please choose a state."))
 
-    counties_sf_cur <- county_sf_update()
+    counties_sf_cur <- sf_by_date_res(date_select, "county", state_input)
     labels_final <- master_labeller(counties_sf_cur, date_select)
     pal <- pal_default(domain = counties_sf_cur$Rt)
     cur_grpid <- digest::digest(c(date_select, state_input))
@@ -539,8 +541,8 @@ server <- function(input, output, session) {
     if (prev_grpid != cur_grpid) {
       suppressWarnings({
         map_state <- map_state %>%
-        addPolygon_Point(counties_sf_cur, labels_final, cur_grpid) %>%
-        clearGroup(prev_grpid)
+          addPolygon_Point(counties_sf_cur, labels_final, cur_grpid) %>%
+          clearGroup(prev_grpid)
       })
     }
     prev_grpid_state_reactive$val <- cur_grpid

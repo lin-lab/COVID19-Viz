@@ -10,6 +10,7 @@ library(tigris)
 library(USAboundaries)
 library(rnaturalearth)
 library(rgeos)
+library(purrr)
 
 #'
 #'
@@ -409,7 +410,7 @@ world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
          starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
-## Get choices for names and export
+## Get choices for names
 ########################################################################
 
 sf_all <- rbind(world_merged, provinces_merged, state_merged, county_merged)
@@ -468,6 +469,33 @@ rep_names <- names_dt[, .N, by = names][N > 1, ]
 rep_names
 stopifnot(nrow(rep_names) == 0)
 
+########################################################################
+## Get state centers for plotting
+########################################################################
+
+get_lnglat <- function(geometry, UID) {
+  bbox <- st_bbox(geometry)
+  lng <- mean(c(bbox["xmin"], bbox["xmax"]))
+  lat <- mean(c(bbox["ymin"], bbox["ymax"]))
+  if (UID == "84000002") {
+    lng <- -147
+  }
+  return(c(lng, lat))
+}
+
+
+usa_counties <- sf_all %>%
+  filter(resolution == "state_USA_Canada", UID > 12499) %>%
+  select(UID, dispID, geometry)
+
+state_centers <- map2(usa_counties$geometry, usa_counties$UID, get_lnglat)
+names(state_centers) <- usa_counties$UID
+
+########################################################################
+## Save everything
+########################################################################
+
 saveRDS(sf_all, "clean_data/sf_all.rds")
 saveRDS(rt_long_all, "clean_data/rt_long_all.rds")
 saveRDS(names_list, "clean_data/names_list.rds")
+saveRDS(state_centers, "clean_data/state_centers.rds")
