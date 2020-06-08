@@ -52,7 +52,7 @@ rt_range <- range(rt_long_all$Rt_plot, na.rm = TRUE)
 colors_default = c("#696969", "#9e9e9e", "#4575b4", "#74add1", "#abd9e9",
                    "#e0f3f8", "#ffffbf", "#fee090", "#fdae61", "#f46d43",
                    "#d73027")
-color_labels <- c("Insufficient cases", "Insufficient new cases", "0.00 - 0.25",
+color_labels <- c("Insufficient total cases", "Insufficient new cases", "0.00 - 0.25",
                   "0.25 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
                   "1.25 - 1.50", "1.50 - 2.00", "2 - 5", ">5")
 pal_default <- partial(colorBin, palette = colors_default, bins = bins)
