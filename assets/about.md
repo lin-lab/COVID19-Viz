@@ -83,13 +83,21 @@ the JHU dataset. We also state/province level daily Rt estimates for the USA,
 Australia, Canada, and China, as well as county-level daily Rt estimates for the
 US.
 
+## Limitations
+
 Rt estimation becomes unstable when there are only a few new cases per day or
 when the total number of cases is small. Because of low population size or lack
 of reporting, this is the case for many rural counties in the US as well as many
-countries with underdeveloped healthcare infrastructure. We do not show the Rt
-value on days where the total number of cases is less than 50 or on days where
-the average number of new cases in a 7-day window centered on the date of
-interest is below 10.
+countries with underdeveloped healthcare infrastructure. Therefore, we do not
+show the Rt value when this is the case.
+
+Furthermore, our calculation of Rt is dependent on the number of reported daily
+new cases. We use the number of reported cases as a proxy measure for the number
+of actual cases. For most locations, the number of reported cases is likely to
+be lower than the number of actual cases because of reporting issues or lack of
+COVID-19 testing. Therefore, we need to be cautious about interpreting the Rt
+for any particular region and take into account how reliable the case numbers
+are.
 
 ## Code Availability
 
