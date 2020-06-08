@@ -486,21 +486,25 @@ server <- function(input, output, session) {
   })
 
   # change map polygons when state or date changes
-  prev_grpid_state_reactive <- reactiveValues(val = "default")
+  prev_grpid_state_reactive <- reactiveValues(val = "")
 
   # explore states map
   output$explore_states_out <- renderLeaflet({
-    counties_sf <- sf_by_date_res(max_date, "county", "84000025")
+    ma_uid <- "84000025"
+    counties_sf <- sf_by_date_res(max_date, "county", ma_uid)
     labels_final <- master_labeller(counties_sf, max_date)
     pal <- pal_default(domain = counties_sf$Rt)
+    cur_grpid <- digest::digest(c(max_date, ma_uid))
     suppressWarnings(
-      leaflet(options = list(worldCopyJump = FALSE)) %>%
+      map_default <- leaflet(options = list(worldCopyJump = FALSE)) %>%
         addProviderTiles(providers$Stamen.TonerLite,
                          options = providerTileOptions(minZoom = 3)) %>%
         setView(-71.72, 42.06, 7) %>%
         setMaxBounds(-180, -90, 180, 90) %>%
-        addPolygon_Point(counties_sf, labels_final, "default")
+        addPolygon_Point(counties_sf, labels_final, cur_grpid)
     )
+    prev_grpid_state_reactive$val <- cur_grpid
+    map_default
   })
 
   # change zoom level only when state changes
