@@ -89,7 +89,9 @@ Rt estimation becomes unstable when there are only a few new cases per day or
 when the total number of cases is small. Because of low population size or lack
 of reporting, this is the case for many rural counties in the US as well as many
 countries with underdeveloped healthcare infrastructure. Therefore, we do not
-show the Rt value when this is the case.
+show the Rt value on dates when the number of total cases is below 50 or when
+the average number of new cases within a centered 7-day window is below 10 (e.g.
+if the date is May 12, we take the average number of new cases from May 9-15).
 
 Furthermore, our calculation of Rt is dependent on the number of reported daily
 new cases. We use the number of reported cases as a proxy measure for the number
