@@ -12,8 +12,8 @@ You can scroll to change the zoom of the map and click-drag to move the map
 around. Below the map, there is a table of Rts for the chosen date and
 resolution. This table is by default sorted in descending order of Rt, but the
 sorting can be changed by clicking a column header. Locations where Rt could not
-be calculated are colored gray in the map and not shown in the table (see Rt
-Method Description for more info).
+be calculated are colored gray in the map and not shown in the table (see
+Limitations section for more info).
 
 Technical note: the blue line is a fitted loess curve to the Rt points, and the
 error bars show the 95% posterior interval of Rt for that time point.
