@@ -112,9 +112,8 @@ region and time and take into account how reliable the case numbers are.
 
 ## Code Availability
 
-+ Website code:
-[https://github.com/lin-lab/COVID19-Viz](https://github.com/lin-lab/COVID19-Viz)
-+ Rt Calculation code: Github link forthcoming.
++ Website code: [https://github.com/lin-lab/COVID19-Viz](https://github.com/lin-lab/COVID19-Viz)
++ Rt Calculation code: [https://github.com/lin-lab/COVID19-Rt](https://github.com/lin-lab/COVID19-Rt)
 + COVID-19 data cleaning code: [https://github.com/lin-lab/COVID-data-cleaning](https://github.com/lin-lab/COVID-data-cleaning)
 
 ## Credits
