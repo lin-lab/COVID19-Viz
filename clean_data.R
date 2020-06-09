@@ -14,14 +14,17 @@ library(purrr)
 
 #'
 #'
-subset_rollmean <- function(dt, group_var = "UID", window_size = 7,
-                            pos_cutoff = 50, posincr_cutoff = 10,
-                            start_date = ymd("2020-03-19")) {
+lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
+                           window_size = 7, pos_cutoff = 50,
+                           posincr_cutoff = 10,
+                           start_date = ymd("2020-03-19")) {
+  setnames(dt, old = "date", new = "date_orig")
+  dt[, date := date_orig - days(nlag)]
   dt[positiveIncrease <= 0, posIncr_trunc := 0]
   dt[positiveIncrease > 0, posIncr_trunc := positiveIncrease]
   dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
-                                    align = "center", algo = "exact"),
-    by = group_var]
+                                    align = "right", algo = "exact"),
+      by = group_var]
   ret <- dt[date >= start_date & !is.na(rolling_posIncr)]
   ret[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
       `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
@@ -38,16 +41,16 @@ subset_rollmean <- function(dt, group_var = "UID", window_size = 7,
 state_rt_long_orig <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
   data.table()
 
-state_rt_long <- subset_rollmean(state_rt_long_orig, "stateName")
+state_rt_long <- lag_and_subset(state_rt_long_orig, "stateName")
 
 # check that we calculated the rolling mean correctly
 state_check <- state_rt_long[stateName == "New Jersey", ]
-stopifnot(all.equal(state_check$rolling_posIncr[4],
+stopifnot(all.equal(state_check$rolling_posIncr[7],
                     mean(state_check$posIncr_trunc[1:7])))
-stopifnot(all.equal(state_check$rolling_posIncr[5],
+stopifnot(all.equal(state_check$rolling_posIncr[8],
                     mean(state_check$posIncr_trunc[2:8])))
 stopifnot(all.equal(state_check$rolling_posIncr[10],
-                    mean(state_check$posIncr_trunc[7:13])))
+                    mean(state_check$posIncr_trunc[4:10])))
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
@@ -85,7 +88,7 @@ county_rt_long_orig <- read_tsv("raw_data/jhu_county_rt.tsv",
                                 guess_max = 10000) %>%
   data.table()
 
-county_rt_long <- subset_rollmean(county_rt_long_orig)
+county_rt_long <- lag_and_subset(county_rt_long_orig)
 stopifnot(all(county_rt_long$Rt_upr >= county_rt_long$Rt_lwr, na.rm = TRUE))
 
 # make combined key for county rt long
@@ -210,12 +213,13 @@ county_rt_long_export <- county_rt_long[exported_counties, on = "UID"] %>%
 
 global_rt_long_orig <- fread("raw_data/jhu_global_rt.tsv", fill = TRUE)
 global_rt_long_orig[Country_Region == "Canada",]
+global_rt_long_orig[, date := ymd(date)]
 
 # fix a typo
 global_rt_long_orig[UID == 12406,
                     Combined_Key := "Northwest Territories, Canada"]
 
-global_rt_long <- subset_rollmean(global_rt_long_orig)
+global_rt_long <- lag_and_subset(global_rt_long_orig)
 stopifnot(all(global_rt_long$Rt_upr >= global_rt_long$Rt_lwr, na.rm = TRUE))
 
 global_rt_wide <- global_rt_long %>%
