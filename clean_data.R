@@ -12,12 +12,34 @@ library(rnaturalearth)
 library(rgeos)
 library(purrr)
 
+#' Lag and subset the Rt data.
 #'
+#' This function lags the Rt by a specified number of days. Then, we filter
+#' out Rts outside the date range. We also set Rt to be NA on days when there
+#' are not enough total cases or when the average number of new cases in the
+#' past few days is below a certain threshold. We do this for each location in
+#' the data.
+#'
+#' @param dt Input data frame. Assumed to have columns date, positiveIncrease,
+#' positive, mean_rt, ci_upper, ci_lower.
+#' @param group_var Variable that indicates each location.
+#' @param nlag Number of days to lag Rt by.
+#' @param window_size Number of days to average the new cases over. Note that
+#' the window is right-aligned, e.g. if the date is June 7, we will take the
+#' average from June 1 to June 7.
+#' @param pos_cutoff Set Rt to NA if the number of total cases on any particular
+#' day does not exceed this number.
+#' @param posincr_cutoff Set Rt to NA if the average number of new cases on
+#' the past window_size days does not exceed this number.
+#' @param start_date Take times after this start date.
+#' @param end_date Take times before this end date.
 #'
 lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
                            window_size = 7, pos_cutoff = 50,
                            posincr_cutoff = 10,
-                           start_date = ymd("2020-03-19")) {
+                           start_date = ymd("2020-03-19"),
+                           end_date = today()) {
+  stopifnot(start_date <= end_date)
   setnames(dt, old = "date", new = "date_orig")
   dt[, date := date_orig - days(nlag)]
   dt[positiveIncrease <= 0, posIncr_trunc := 0]
@@ -25,7 +47,7 @@ lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
   dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
                                     align = "right", algo = "exact"),
       by = group_var]
-  ret <- dt[date >= start_date & !is.na(rolling_posIncr)]
+  ret <- dt[date >= start_date & date <= end_date & !is.na(rolling_posIncr)]
   ret[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
       `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
   ret[positive >= pos_cutoff & rolling_posIncr < posincr_cutoff,
@@ -34,6 +56,8 @@ lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
   return(ret)
 }
 
+end_date <- ymd("2020-06-01")
+
 ########################################################################
 ## State-level data
 ########################################################################
@@ -41,7 +65,8 @@ lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
 state_rt_long_orig <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
   data.table()
 
-state_rt_long <- lag_and_subset(state_rt_long_orig, "stateName")
+state_rt_long <- lag_and_subset(state_rt_long_orig, "stateName",
+                                end_date = end_date)
 
 # check that we calculated the rolling mean correctly
 state_check <- state_rt_long[stateName == "New Jersey", ]
@@ -88,7 +113,7 @@ county_rt_long_orig <- read_tsv("raw_data/jhu_county_rt.tsv",
                                 guess_max = 10000) %>%
   data.table()
 
-county_rt_long <- lag_and_subset(county_rt_long_orig)
+county_rt_long <- lag_and_subset(county_rt_long_orig, end_date = end_date)
 stopifnot(all(county_rt_long$Rt_upr >= county_rt_long$Rt_lwr, na.rm = TRUE))
 
 # make combined key for county rt long
@@ -219,7 +244,7 @@ global_rt_long_orig[, date := ymd(date)]
 global_rt_long_orig[UID == 12406,
                     Combined_Key := "Northwest Territories, Canada"]
 
-global_rt_long <- lag_and_subset(global_rt_long_orig)
+global_rt_long <- lag_and_subset(global_rt_long_orig, end_date = end_date)
 stopifnot(all(global_rt_long$Rt_upr >= global_rt_long$Rt_lwr, na.rm = TRUE))
 
 global_rt_wide <- global_rt_long %>%
