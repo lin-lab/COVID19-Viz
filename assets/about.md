@@ -83,6 +83,14 @@ the JHU dataset. We also state/province level daily Rt estimates for the USA,
 Australia, Canada, and China, as well as county-level daily Rt estimates for the
 US.
 
+Because the number of reported cases on a particular day does not represent the
+number of people who contracted COVID-19, the Rt curve needs to be adjusted to
+account for the fact that people contract COVID-19 before their case gets
+counted. As a heuristic, we assume that there is a 5-day lag from the time a
+person contracts COVID-19 until they are reported as a case, so we shift the Rt
+curve back 5 days to reflect this.
+
+
 ## Limitations
 
 Rt estimation becomes unstable when there are only a few new cases per day or
@@ -90,16 +98,17 @@ when the total number of cases is small. Because of low population size or lack
 of reporting, this is the case for many rural counties in the US as well as many
 countries with underdeveloped healthcare infrastructure. Therefore, we do not
 show the Rt value on dates when the number of total cases is below 50 or when
-the average number of new cases within a centered 7-day window is below 10 (e.g.
-if the date is May 12, we take the average number of new cases from May 9-15).
+the average number of new cases within the previous 7 days is below 10.
 
 Furthermore, our calculation of Rt is dependent on the number of reported daily
 new cases. We use the number of reported cases as a proxy measure for the number
-of actual cases. For most locations, the number of reported cases is likely to
-be lower than the number of actual cases because of reporting issues or lack of
-COVID-19 testing. Therefore, we need to be cautious about interpreting the Rt
-for any particular region and take into account how reliable the case numbers
-are.
+of actual cases 5 days before the report date. In some instances, the number of
+reported cases is likely to be lower than the number of actual cases because of
+reporting issues or lack of COVID-19 testing. In other instances, local
+authorities may report cases from several days on the same day; for example,
+they may not report many cases on weekends but report many on Mondays.
+Therefore, we need to be cautious about interpreting the Rt for any particular
+region and time and take into account how reliable the case numbers are.
 
 ## Code Availability
 
