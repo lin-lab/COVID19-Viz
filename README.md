@@ -2,17 +2,21 @@
 
 RShiny visualization of COVID-19 Rt.
 
-## How to run the App
+## How to Run the app
 
 If you downloaded the app locally, have all the dependencies, and wish to run
 it, simply open the `app.R` file in RStudio and click the `Run App` button.
 
-## Structure of the App
+## Code Structure
 
-The main code for the website is in `app.R`. There are some static files in the
-`assets` folder. The code to clean the Rt data and merge it with the shapefiles
-for the maps is in `clean_data.R`. The resultant `rds` files are stored in
-`clean_data`.
++ The code to download the data is in `01_download_rt.sh`.
++ The code to clean the Rt data and merge it with the shapefiles is in
+  `02_clean_data.R`. This code generates some `rds` files that are stored in
+  `clean_data`.
++ The RShiny app code is in `app.R`.
++ Running the `prep_data.sh` bash file will run `01_download_rt.sh` and
+  `02_clean_data.R`. You only need to do this if you want to reproduce the data
+  cleaning and merging steps.
 
 ## Build Docker
 
