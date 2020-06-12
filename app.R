@@ -17,9 +17,7 @@ library(cowplot)
 library(htmltools)
 library(purrr)
 library(dplyr)
-library(withr)
-library(data.table)
-library(RColorBrewer)
+library(readr)
 
 ########################################################################
 ## Load data files
@@ -55,33 +53,34 @@ colors_default = c("#696969", "#9e9e9e", "#4575b4", "#74add1", "#abd9e9",
 color_labels <- c("Insufficient total cases", "Insufficient new cases", "0.00 - 0.25",
                   "0.25 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
                   "1.25 - 1.50", "1.50 - 2.00", "2 - 5", ">5")
-pal_default <- partial(colorBin, palette = colors_default, bins = bins)
+pal_default <- purrr::partial(colorBin, palette = colors_default, bins = bins)
 
 # set up defaults for adding stuff to leaflet maps
 addPolygons_default <-
-  partial(addPolygons, opacity = 1, weight = 0.5, color = "white",
-          dashArray = "3", fillOpacity = 0.7,
-          highlight = highlightOptions(
-            weight = 5, color = "#666", dashArray = "",
-            fillOpacity = 0.7, bringToFront = TRUE),
-          labelOptions = labelOptions(
-            style = list("font-weight" = "normal", padding = "3px 8px"),
-            textsize = "15px", direction = "auto"))
+  purrr::partial(addPolygons, opacity = 1, weight = 0.5, color = "white",
+                dashArray = "3", fillOpacity = 0.7,
+                highlight = highlightOptions(
+                  weight = 5, color = "#666", dashArray = "",
+                  fillOpacity = 0.7, bringToFront = TRUE),
+                labelOptions = labelOptions(
+                  style = list("font-weight" = "normal", padding = "3px 8px"),
+                  textsize = "15px", direction = "auto"))
 
 addCircles_default <-
-  partial(addCircles, opacity = 1, weight = 1, radius = 17000, dashArray = "3",
-          fillOpacity = 0.7, stroke = TRUE, color = "white",
-          labelOptions = labelOptions(
-            style = list("font-weight" = "normal", padding = "3px 8px"),
-            textsize = "15px", direction = "auto"),
-          highlightOptions = highlightOptions(
-            weight = 5, color = "#666", dashArray = "",
-            fillOpacity = 0.7, bringToFront = TRUE))
+  purrr::partial(addCircles, opacity = 1, weight = 1, radius = 17000,
+                dashArray = "3", fillOpacity = 0.7, stroke = TRUE,
+                color = "white",
+                labelOptions = labelOptions(
+                  style = list("font-weight" = "normal", padding = "3px 8px"),
+                  textsize = "15px", direction = "auto"),
+                highlightOptions = highlightOptions(
+                  weight = 5, color = "#666", dashArray = "",
+                  fillOpacity = 0.7, bringToFront = TRUE))
 
 # get range of possible dates
 dates <- unique(rt_long_all$date_lag)
 min_date <- min(dates)
-max_date <- max(dates)
+max_date <- as.Date("2020-06-04", format = "%Y-%m-%d")
 
 ########################################################################
 ## Define helper functions
@@ -167,15 +166,16 @@ sf_by_date_res <- function(date_select,
 
   if (is.null(state_uid)) {
     ret_sf <- sf_all %>%
-      filter(resolution == sel_resolution) %>%
-      select(!!select_cols)
+      dplyr::filter(resolution == sel_resolution) %>%
+      dplyr::select(!!select_cols)
   } else {
     stopifnot(sel_resolution == "county")
     county_uids <- get_county_uids(state_uid)
     ret_sf <- sf_all %>%
-      filter(resolution == sel_resolution, (UID > county_uids$uid_lwr &
-              UID < county_uids$uid_upr) | UID %in% county_uids$extra_uids) %>%
-      select(!!select_cols)
+      dplyr::filter(resolution == sel_resolution,
+                    (UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
+                      UID %in% county_uids$extra_uids) %>%
+      dplyr::select(!!select_cols)
   }
   names(ret_sf) <- c("Rt", "Rt_lwr", "Rt_upr", "UID", "dispID", "geometry")
   return(ret_sf)
@@ -464,13 +464,13 @@ server <- function(input, output, session) {
     validate(need(sel_resolution, "Please select a resolution."))
 
     ret_df <- rt_long_all %>%
-      filter(resolution == sel_resolution, date == date_select,
-             positive >= 50) %>%
-      mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA)) %>%
-      select(Location = dispID, Rt, `Total Cases` = positive,
-             `New Cases` = positiveIncrease, `Total Deaths` = death,
-             `New Deaths` = deathIncrease) %>%
-      arrange(desc(Rt), desc(`Total Cases`))
+      dplyr::filter(resolution == sel_resolution, date_lag == date_select,
+                    positive >= 50) %>%
+      dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA)) %>%
+      dplyr::select(Location = dispID, Rt, `Total Cases` = positive,
+                    `New Cases` = positiveIncrease, `Total Deaths` = death,
+                    `New Deaths` = deathIncrease) %>%
+      dplyr::arrange(desc(Rt), desc(`Total Cases`))
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
   }, server = FALSE, options = list(pageLength = 25))
@@ -487,13 +487,13 @@ server <- function(input, output, session) {
 
     req(nrow(selected_uids) > 0)
 
-    inner_join(rt_long_all, selected_uids, by = "UID")
+    dplyr::inner_join(rt_long_all, selected_uids, by = "UID")
   })
 
   # generate the plot of Rt comparisons after user hits submit
   output$compare_plt_out <- renderPlot({
     cur_dat <- plt_dat_compare() %>%
-      mutate(Rt_plot = case_when(
+      dplyr::mutate(Rt_plot = case_when(
               Rt_plot < 0 ~ NA_real_,
               TRUE ~ Rt_plot))
     validate(need(nrow(cur_dat) > 0,
@@ -607,19 +607,20 @@ server <- function(input, output, session) {
     validate(need(input$state_select, message = "Please select a state."))
     county_uids <- get_county_uids(input$state_select)
     rt_long_all %>%
-      filter((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
-               UID %in% county_uids$extra_uids)
+      dplyr::filter((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
+                    UID %in% county_uids$extra_uids)
   })
 
   # render heatmap of counties over time
   output$explore_states_counties <- renderCachedPlot({
     validate(need(input$state_select, message = "Please select a state."))
     plt_data_pruned <- county_rt_long_update() %>%
-      filter(Rt_plot > 0) %>%
-      mutate(`Rt Bins` = cut(Rt_plot, breaks = bins, labels = color_labels,
-                             include.lowest = TRUE, right = FALSE)) %>%
-      mutate(County = factor(dispID)) %>%
-      rename(Rt = Rt_plot)
+      dplyr::filter(Rt_plot > 0) %>%
+      dplyr::mutate(`Rt Bins` = cut(Rt_plot, breaks = bins,
+                                    labels = color_labels, include.lowest = TRUE,
+                                    right = FALSE)) %>%
+      dplyr::mutate(County = factor(dispID)) %>%
+      dplyr::rename(Rt = Rt_plot)
     color_pal <- colors_default
     names(color_pal) <- levels(plt_data_pruned$`Rt Bins`)
 
@@ -648,12 +649,12 @@ server <- function(input, output, session) {
     validate(need(input$state_select_date, message = "Please select a state."))
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
-      filter(date == date_select) %>%
-      mutate(Rt = ifelse(Rt_plot >= 0, round(Rt_plot, 2), NA)) %>%
-      select(Location = dispID, Rt, `Total Cases` = positive,
-             `New Cases` = positiveIncrease, `Total Deaths` = death,
-             `New Deaths` = deathIncrease) %>%
-      arrange(desc(Rt))
+      dplyr::filter(date == date_select) %>%
+      dplyr::mutate(Rt = ifelse(Rt_plot >= 0, round(Rt_plot, 2), NA)) %>%
+      dplyr::select(Location = dispID, Rt, `Total Cases` = positive,
+                    `New Cases` = positiveIncrease, `Total Deaths` = death,
+                    `New Deaths` = deathIncrease) %>%
+      dplyr::arrange(desc(Rt))
   }, server = FALSE)
 
   output$Rt_table_explore_states_title <- renderText({
