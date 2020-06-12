@@ -79,7 +79,7 @@ addCircles_default <-
             fillOpacity = 0.7, bringToFront = TRUE))
 
 # get range of possible dates
-dates <- unique(rt_long_all$date)
+dates <- unique(rt_long_all$date_lag)
 min_date <- min(dates)
 max_date <- max(dates)
 
@@ -150,7 +150,7 @@ get_county_uids <- function(state_uid_str) {
 
 #' Subset the sf_all object by date and resolution.
 #'
-#' @param date_select Selcted date.
+#' @param date_select Selcted date as a date object.
 #' @param sel_resolution Selected resolution.
 #' @param state_uid A state UID string. If non-null, uses the state UID to
 #' select the counties in that state. See get_county_uids.
@@ -159,9 +159,10 @@ sf_by_date_res <- function(date_select,
                                               "state_Australia", "county",
                                               "country"), state_uid = NULL) {
   sel_resolution <- match.arg(sel_resolution)
-  rt_col <- paste0("Rt_plot_", date_select)
-  rtlwr_col <- paste0("Rt_lwr_", date_select)
-  rtupr_col <- paste0("Rt_upr_", date_select)
+  date_str <- format(date_select, "%Y-%m-%d")
+  rt_col <- paste0("Rt_plot_", date_str)
+  rtlwr_col <- paste0("Rt_lwr_", date_str)
+  rtupr_col <- paste0("Rt_upr_", date_str)
   select_cols <- c(rt_col, rtlwr_col, rtupr_col, "UID", "dispID")
 
   if (is.null(state_uid)) {
@@ -228,7 +229,7 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
   # states.
   if (state_str %in% tiny_states) {
     return(default_zoom + 2)
-  } else if (state_str %in% small_states) {
+  } else if (state_str %in% small_states && state_str != "Hawaii") {
     return(default_zoom + 1)
   } else if (state_str %in% large_states) {
     return(default_zoom - 1)
@@ -255,8 +256,8 @@ ui <- fluidPage(
           p("Use slider to adjust date. Click on an area to see its Rt over time."),
           p("Click play button to animate Rt over time."),
           sliderInput("RtDate", label = "Date",
-                      min = min_date, max = max(dates),
-                      value = max(dates),
+                      min = min_date, max = max_date,
+                      value = max_date,
                       animate = animationOptions(interval = 3000)),
           selectInput("select_resolution", "Resolution:",
                       choices = list("Country" = "country",
@@ -265,11 +266,11 @@ ui <- fluidPage(
                                      "Chinese Provinces" = "state_China",
                                      "County (US only)" = "county")),
           # plot of Rt over time
-          plotOutput("RtOverTime")
+          plotOutput("RtOverTime", height = "600px")
         ), # end of sidebarPanel
         mainPanel(
           leafletOutput("RtMap", height = "80vh", width = "100%"),
-          h4("Table of Rts for Current Date and Resolution"),
+          h4(textOutput("Rt_table_title")),
           DT::DTOutput("Rt_table")
         )
       ) # end of sidebarLayout
@@ -293,7 +294,7 @@ ui <- fluidPage(
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
-          plotOutput("compare_plt_out", height = "70vh", width = "100%")
+          plotOutput("compare_plt_out", height = "1200px", width = "100%")
         )
       ) # end of sideBarLayout
     ), # end of tabPanel
@@ -310,8 +311,8 @@ ui <- fluidPage(
         ),
         column(6, align = "center",
           sliderInput("state_select_date", label = "Date",
-                      min = min_date, max = max(dates),
-                      value = max(dates), animate = TRUE)
+                      min = min_date, max = max_date,
+                      value = max_date, animate = TRUE)
         )
       ),
       # output at the bottom
@@ -324,7 +325,7 @@ ui <- fluidPage(
         )
       ),
       fluidRow(
-        h4("Table of Rts for selected date"),
+        h4(textOutput("Rt_table_explore_states_title")),
         DT::DTOutput("Rt_table_explore_states")
       )
     ), # end of tabPanel
@@ -374,11 +375,10 @@ server <- function(input, output, session) {
 
   # update the data based on values
   sf_dat_update <- reactive({
-    date_select <- format(input$RtDate, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
-    validate(need(date_select, "Please select a date."))
+    validate(need(input$RtDate, "Please select a date."))
     validate(need(sel_resolution, "Please select a resolution."))
-    sf_by_date_res(date_select, sel_resolution)
+    sf_by_date_res(input$RtDate, sel_resolution)
   })
 
   # keep track of previous group ID so we can clear its shapes
@@ -409,25 +409,46 @@ server <- function(input, output, session) {
   # Rt over time based on click
   output$RtOverTime <- renderCachedPlot({
     validate(need(input$RtMap_shape_click,
-                  message = "Click on a location to show its Rt over time."))
+                  message = "Click on a location to show Rt and new cases over time."))
     click <- input$RtMap_shape_click
-    sel_resolution <- input$select_resolution
     plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
     if (nrow(plt_dat) > 0) {
-      plt_title <- sprintf("Rt for %s", unique(plt_dat$dispID))
+      place_name <- unique(plt_dat$dispID)
+      rt_plt_title <- sprintf("Rt for %s", place_name)
       ylim_max <- ceiling(max(plt_dat$Rt_upr))
-      p <- plt_dat %>%
-        ggplot(aes(x = date, y = Rt_plot)) +
-        geom_point(color = "black") +
-        geom_errorbar(aes(ymin = Rt_lwr, ymax = Rt_upr), color = "black") +
-        geom_smooth(method = "loess", se = TRUE, formula = y ~ x) +
-        xlab("Date") + ylab("Rt") + ggtitle(plt_title) +
-        ylim(0, ylim_max) + geom_hline(yintercept = 1, lty = 2) +
-        theme_cowplot() +
-        background_grid(major = "xy", minor = "xy")
-      suppressWarnings(print(p))
+      xlim_max <- max(plt_dat$date)
+      xlim_min <- min(plt_dat$date_lag)
+      suppressWarnings({
+        rt_plt <- plt_dat %>%
+          ggplot(aes(x = date_lag, y = Rt_plot)) +
+          geom_point(color = "black") +
+          geom_errorbar(aes(ymin = Rt_lwr, ymax = Rt_upr), color = "black") +
+          geom_smooth(method = "loess", se = TRUE, formula = y ~ x) +
+          geom_hline(yintercept = 1, lty = 2) +
+          xlab("Date (lagged 5 days)") + ylab("") + ggtitle(rt_plt_title) +
+          ylim(0, ylim_max) + xlim(xlim_min, xlim_max) +
+          theme_cowplot() +
+          background_grid(major = "xy", minor = "xy")
+        newcases_plt_title <- sprintf("Daily New Cases for %s", place_name)
+        newcases_plt <- plt_dat %>%
+          ggplot(aes(x = date, y = positiveIncrease)) +
+          geom_point() + geom_line() +
+          xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
+          theme_cowplot() +
+          xlim(xlim_min, xlim_max) +
+          background_grid(major = "xy", minor = "xy")
+        final_plt <- plot_grid(rt_plt, newcases_plt, nrow = 2, align = "v",
+                               axis = "l")
+        final_plt
+      })
     }
   }, cacheKeyExpr = { input$RtMap_shape_click$id })
+
+  output$Rt_table_title <- renderText({
+    date_select <- format(input$RtDate, "%Y-%m-%d")
+    req(date_select)
+    sprintf("Table of Rt for %s", date_select)
+  })
 
   # Table of current Rts at current resolution
   output$Rt_table <- DT::renderDT({
@@ -437,7 +458,7 @@ server <- function(input, output, session) {
     validate(need(sel_resolution, "Please select a resolution."))
 
     ret_df <- rt_long_all %>%
-      filter(resolution == sel_resolution, date == date_select, Rt_plot > 0) %>%
+      filter(resolution == sel_resolution, date == date_select) %>%
       mutate(Rt = round(Rt_plot, 2)) %>%
       select(Location = dispID, Rt, `Total Cases` = positive,
              `New Cases` = positiveIncrease, `Total Deaths` = death,
@@ -445,7 +466,7 @@ server <- function(input, output, session) {
       arrange(desc(Rt))
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
-  }, server = FALSE)
+  }, server = FALSE, options = list(pageLength = 25))
 
   # get data to plot for Rt comparison
   plt_dat_compare <- eventReactive(input$compare_submit, {
@@ -459,30 +480,62 @@ server <- function(input, output, session) {
 
     req(nrow(selected_uids) > 0)
 
-    inner_join(rt_long_all, selected_uids, by = "UID") %>%
-      filter(Rt_plot > 0)
+    inner_join(rt_long_all, selected_uids, by = "UID")
   })
 
   # generate the plot of Rt comparisons after user hits submit
   output$compare_plt_out <- renderPlot({
-    cur_dat <- plt_dat_compare()
+    cur_dat <- plt_dat_compare() %>%
+      mutate(Rt_plot = case_when(
+              Rt_plot < 0 ~ NA_real_,
+              TRUE ~ Rt_plot))
     validate(need(nrow(cur_dat) > 0,
                   "Insufficient data for selected locations."))
     ylim_max <- ceiling(max(cur_dat$Rt_upr))
+    xlim_max <- max(cur_dat$date)
+    xlim_min <- min(cur_dat$date_lag)
 
-    p <- cur_dat %>%
-      ggplot(aes(x = date, y = Rt_plot, color = dispID, fill = dispID)) +
-      geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr), alpha = 0.2) +
-      geom_line() + geom_point() + xlab("Date") + ylab("Rt") +
-      ggtitle("Comparison of Rt") + ylim(0, ylim_max) +
-      geom_hline(yintercept = 1, lty = 2) +
-      scale_color_discrete(name = "Location") +
-      scale_fill_discrete(name = "Location") +
-      theme_cowplot() +
-      theme(text = element_text(size = 18),
-            axis.text = element_text(size = 15))
+    suppressWarnings({
+      rt_plt <- cur_dat %>%
+        ggplot(aes(x = date_lag, y = Rt_plot, color = dispID, fill = dispID)) +
+        geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr), alpha = 0.2) +
+        geom_line() + geom_point() + xlab("Date (lagged 5 days)") + ylab("Rt") +
+        ggtitle("Comparison of Rt") + ylim(0, ylim_max) +
+        xlim(xlim_min, xlim_max) +
+        geom_hline(yintercept = 1, lty = 2) +
+        scale_color_discrete(name = "Location") +
+        scale_fill_discrete(name = "Location") +
+        theme_cowplot() +
+        theme(text = element_text(size = 18),
+              axis.text = element_text(size = 15))
 
-    suppressWarnings(p)
+      newcases_plt <- cur_dat %>%
+        ggplot(aes(x = date, y = positiveIncrease, color = dispID)) +
+        geom_line() + geom_point() + xlab("Date") + ylab("New Cases") +
+        ggtitle("Comparison of Daily New Cases") +
+        xlim(xlim_min, xlim_max) +
+        scale_color_discrete(name = "Location") +
+        scale_fill_discrete(name = "Location") +
+        theme_cowplot() +
+        theme(text = element_text(size = 18),
+              axis.text = element_text(size = 15))
+
+      cumcases_plt <- cur_dat %>%
+        ggplot(aes(x = date, y = positive, color = dispID)) +
+        geom_line() + geom_point() + xlab("Date") + ylab("Total Cases") +
+        ggtitle("Comparison of Total Cases") +
+        xlim(xlim_min, xlim_max) +
+        scale_color_discrete(name = "Location") +
+        scale_fill_discrete(name = "Location") +
+        theme_cowplot() +
+        theme(text = element_text(size = 18),
+              axis.text = element_text(size = 15)) +
+        scale_y_continuous(labels = scales::comma, trans = "log10")
+
+      plt_out <- plot_grid(rt_plt, newcases_plt, cumcases_plt, ncol = 1,
+                          align = "v", axis = "l")
+      plt_out
+    })
   })
 
   # change map polygons when state or date changes
@@ -516,6 +569,7 @@ server <- function(input, output, session) {
       setView(lnglat[1], lnglat[2], zoom_level)
   })
 
+  # change state county polygons when state or date changes
   observe({
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     state_input <- input$state_select
@@ -523,7 +577,8 @@ server <- function(input, output, session) {
                   "Please choose a date using the slider."))
     validate(need(input$state_select, "Please choose a state."))
 
-    counties_sf_cur <- sf_by_date_res(date_select, "county", state_input)
+    counties_sf_cur <- sf_by_date_res(input$state_select_date, "county",
+                                      state_input)
     labels_final <- master_labeller(counties_sf_cur, date_select)
     pal <- pal_default(domain = counties_sf_cur$Rt)
     cur_grpid <- digest::digest(c(date_select, state_input))
@@ -553,9 +608,9 @@ server <- function(input, output, session) {
   output$explore_states_counties <- renderCachedPlot({
     validate(need(input$state_select, message = "Please select a state."))
     plt_data_pruned <- county_rt_long_update() %>%
+      filter(Rt_plot > 0) %>%
       mutate(`Rt Bins` = cut(Rt_plot, breaks = bins, labels = color_labels,
                              include.lowest = TRUE, right = FALSE)) %>%
-      filter(Rt_plot > 0) %>%
       mutate(County = factor(dispID)) %>%
       rename(Rt = Rt_plot)
     color_pal <- colors_default
@@ -587,12 +642,21 @@ server <- function(input, output, session) {
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
       filter(date == date_select) %>%
-      mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA)) %>%
+      mutate(Rt = ifelse(Rt_plot >= 0, round(Rt_plot, 2), NA)) %>%
       select(Location = dispID, Rt, `Total Cases` = positive,
              `New Cases` = positiveIncrease, `Total Deaths` = death,
              `New Deaths` = deathIncrease) %>%
       arrange(desc(Rt))
   }, server = FALSE)
+
+  output$Rt_table_explore_states_title <- renderText({
+    req(input$state_select_date)
+    req(input$state_select)
+    date_select <- format(input$state_select_date, "%Y-%m-%d")
+    state_uid <- input$state_select
+    sprintf("Table of Rt vales on %s for %s", date_select,
+            state_uid_to_place[[state_uid]])
+  })
 
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
   # this to allow the user to be automatically connected

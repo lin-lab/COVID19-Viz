@@ -40,10 +40,9 @@ lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
                            start_date = ymd("2020-03-19"),
                            end_date = today()) {
   stopifnot(start_date <= end_date)
-  setnames(dt, old = "date", new = "date_orig")
-  dt[, date := date_orig - days(nlag)]
   dt[positiveIncrease <= 0, posIncr_trunc := 0]
   dt[positiveIncrease > 0, posIncr_trunc := positiveIncrease]
+  dt[, date_lag := date - ddays(nlag)]
   dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
                                     align = "right", algo = "exact"),
       by = group_var]
@@ -56,7 +55,8 @@ lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
   return(ret)
 }
 
-end_date <- ymd("2020-06-01")
+#end_date <- ymd("2020-06-06")
+end_date <- today()
 
 ########################################################################
 ## State-level data
@@ -67,6 +67,8 @@ state_rt_long_orig <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
 
 state_rt_long <- lag_and_subset(state_rt_long_orig, "stateName",
                                 end_date = end_date)
+state_rt_long[stateName == "Michigan" & date >= ymd("2020-05-31"),
+              .(date, date_lag, mean_rt, positiveIncrease)]
 
 # check that we calculated the rolling mean correctly
 state_check <- state_rt_long[stateName == "New Jersey", ]
@@ -79,8 +81,8 @@ stopifnot(all.equal(state_check$rolling_posIncr[10],
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
-  select(stateName, date, Rt_plot, Rt_upr, Rt_lwr) %>%
-  pivot_wider(id_cols = c(stateName), names_from = date,
+  select(stateName, date_lag, Rt_plot, Rt_upr, Rt_lwr) %>%
+  pivot_wider(id_cols = c(stateName), names_from = date_lag,
               values_from = c(Rt_plot, Rt_upr, Rt_lwr))
 
 state_maps <- ne_states(country = "united states of america",
@@ -100,7 +102,7 @@ exported_states <-
 state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
   mutate(resolution = "state_USA_Canada",
          dispID = paste0(stateName, ", USA")) %>%
-  select(UID, dispID, date, resolution,
+  select(UID, dispID, date, resolution, date_lag,
          starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
@@ -201,10 +203,10 @@ county_rt_long <- county_rt_long[!(county %in% utah_counties_remove &
                                    stateName == "Utah")]
 
 county_rt_wide <- county_rt_long %>%
-  select(county, stateName, UID, FIPS, date, Rt_plot, Rt_upr, Rt_lwr,
+  select(county, stateName, UID, FIPS, date_lag, Rt_plot, Rt_upr, Rt_lwr,
          Combined_Key) %>%
   pivot_wider(id_cols = c(county, stateName, UID, FIPS, Combined_Key),
-              names_from = date,
+              names_from = date_lag,
               values_from = c(Rt_plot, Rt_upr, Rt_lwr))
 
 county_maps_new <- county_maps %>%
@@ -229,7 +231,7 @@ county_merged <- county_maps_new %>%
 exported_counties <- data.table(UID = county_merged$UID)
 county_rt_long_export <- county_rt_long[exported_counties, on = "UID"] %>%
   mutate(resolution = "county") %>%
-  select(UID, dispID = Combined_Key, date, resolution,
+  select(UID, dispID = Combined_Key, date, date_lag, resolution,
          starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
@@ -251,7 +253,7 @@ global_rt_wide <- global_rt_long %>%
   select(-Population, -interval_start, -FIPS, -Admin2, -positiveIncrease,
          -deathIncrease, -positive, -positiveIncrease, -death) %>%
   pivot_wider(id_cols = c(UID, Province_State:Combined_Key),
-              names_from = date,
+              names_from = date_lag,
               values_from = c(Rt_plot, Rt_upr, Rt_lwr)) %>%
   data.table()
 stopifnot(uniqueN(global_rt_wide$UID) == nrow(global_rt_wide))
@@ -349,7 +351,7 @@ provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
     Country_Region == "Canada" ~ "state_USA_Canada",
     Country_Region == "China" ~ "state_China",
     Country_Region == "Australia" ~ "state_Australia")) %>%
-  select(UID, dispID = Combined_Key, date, resolution,
+  select(UID, dispID = Combined_Key, date, date_lag, resolution,
          starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
@@ -435,7 +437,7 @@ world_merged <- countries_wide %>%
 exported_countries <- data.table(UID = world_merged$UID)
 world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
   mutate(resolution = "country") %>%
-  select(UID, dispID = Combined_Key, date, resolution,
+  select(UID, dispID = Combined_Key, date, date_lag, resolution,
          starts_with("Rt_"), starts_with("positive"), starts_with("death"))
 
 ########################################################################
@@ -507,7 +509,12 @@ get_lnglat <- function(geometry, UID) {
   lng <- mean(c(bbox["xmin"], bbox["xmax"]))
   lat <- mean(c(bbox["ymin"], bbox["ymax"]))
   if (UID == "84000002") {
+    # Alaska
     lng <- -147
+  } else if (UID == "84000015") {
+    # Hawaii
+    lng <- -157.65
+    lat <- 20.09
   }
   return(c(lng, lat))
 }
