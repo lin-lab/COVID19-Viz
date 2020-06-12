@@ -255,23 +255,25 @@ ui <- fluidPage(
         sidebarPanel(
           p("Use slider to adjust date. Click on an area to see its Rt over time."),
           p("Click play button to animate Rt over time."),
+          p("Note the Rt is lagged by 5 days."),
           sliderInput("RtDate", label = "Date",
                       min = min_date, max = max_date,
                       value = max_date,
                       animate = animationOptions(interval = 3000)),
           selectInput("select_resolution", "Resolution:",
-                      choices = list("Country" = "country",
+                      choices = list("World" = "country",
                                      "US States and Canadian Provinces" = "state_USA_Canada",
                                      "Australian Provinces" = "state_Australia",
                                      "Chinese Provinces" = "state_China",
-                                     "County (US only)" = "county")),
+                                     "US Counties" = "county")),
           # plot of Rt over time
           plotOutput("RtOverTime", height = "600px")
         ), # end of sidebarPanel
         mainPanel(
           leafletOutput("RtMap", height = "80vh", width = "100%"),
           h4(textOutput("Rt_table_title")),
-          DT::DTOutput("Rt_table")
+          DT::DTOutput("Rt_table"),
+          p("Only locations with more than 50 total cases are shown. Occasionally, locations may have negative values for new cases or new deaths because of reporting issues.")
         )
       ) # end of sidebarLayout
     ), # end of tabPanel
@@ -280,7 +282,9 @@ ui <- fluidPage(
       sidebarLayout(
         sidebarPanel(
           h4("Select areas to compare their Rt."),
-          p("Some areas may not appear in the plot because of insufficient data."),
+          p("Note the Rt is lagged by 5 days."),
+          p("Some areas may not appear in the plot for all time points because of insufficient data."),
+          p("Occasionally, locations may have negative values for new cases because of reporting issues."),
           # break up the selection by state, county, and country
           selectizeInput("compare_sel_states", label = "States/Provinces",
                          choices = place_choices$state,
@@ -303,14 +307,15 @@ ui <- fluidPage(
       # controls at the top
       fluidRow(
         column(6,
-          h4("Select a state to explore"),
+          h4("Select a state to explore."),
           selectizeInput("state_select", label = "State",
                          selected = "84000025",
                          choices = place_choices$us_state,
                          multiple = FALSE)
         ),
         column(6, align = "center",
-          sliderInput("state_select_date", label = "Date",
+          p("Note the Rt is lagged by 5 days."),
+          sliderInput("state_select_date", label = "Select date",
                       min = min_date, max = max_date,
                       value = max_date, animate = TRUE)
         )
@@ -326,7 +331,8 @@ ui <- fluidPage(
       ),
       fluidRow(
         h4(textOutput("Rt_table_explore_states_title")),
-        DT::DTOutput("Rt_table_explore_states")
+        DT::DTOutput("Rt_table_explore_states"),
+        p("Occasionally, locations may have negative values for new cases or new deaths because of reporting issues.")
       )
     ), # end of tabPanel
     # Fourth tab: About page
@@ -458,12 +464,13 @@ server <- function(input, output, session) {
     validate(need(sel_resolution, "Please select a resolution."))
 
     ret_df <- rt_long_all %>%
-      filter(resolution == sel_resolution, date == date_select) %>%
-      mutate(Rt = round(Rt_plot, 2)) %>%
+      filter(resolution == sel_resolution, date == date_select,
+             positive >= 50) %>%
+      mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA)) %>%
       select(Location = dispID, Rt, `Total Cases` = positive,
              `New Cases` = positiveIncrease, `Total Deaths` = death,
              `New Deaths` = deathIncrease) %>%
-      arrange(desc(Rt))
+      arrange(desc(Rt), desc(`Total Cases`))
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
   }, server = FALSE, options = list(pageLength = 25))
@@ -623,7 +630,7 @@ server <- function(input, output, session) {
         ggplot(aes(x = date, y = County, fill = `Rt Bins`, labels = Rt)) +
         geom_tile(alpha = 0.7) +
         scale_fill_manual(drop = FALSE, values = color_pal) +
-        xlab("Date") + ylab("County") + ggtitle(plt_title) +
+        xlab("Date (lagged 5 days)") + ylab("County") + ggtitle(plt_title) +
         theme_cowplot() +
         scale_y_discrete(limits = rev(levels(plt_data_pruned$County))) +
         theme(axis.text.y = element_text(size = 10),
@@ -654,7 +661,7 @@ server <- function(input, output, session) {
     req(input$state_select)
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     state_uid <- input$state_select
-    sprintf("Table of Rt vales on %s for %s", date_select,
+    sprintf("Table of Rt values on %s for %s", date_select,
             state_uid_to_place[[state_uid]])
   })
 
