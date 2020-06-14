@@ -11,6 +11,7 @@ library(USAboundaries)
 library(rnaturalearth)
 library(rgeos)
 library(purrr)
+library(ggplot2)
 
 #' Lag and subset the Rt data.
 #'
@@ -87,10 +88,11 @@ state_rt_tomerge <- state_rt_long %>%
 
 state_maps <- ne_states(country = "united states of america",
                         returnclass = "sf")
+
 state_merged <- state_maps %>%
   select(name, geometry, fips) %>%
   mutate(UID = as.integer(paste0("840000", substring(fips, 3))),
-         resolution = "state_USA_Canada", dispID = paste0(name, ", USA")) %>%
+         resolution = "state_USA", dispID = paste0(name, ", USA")) %>%
   select(-fips) %>%
   merge(state_rt_tomerge, by.x = "name",
                       by.y = "stateName", all.x = FALSE) %>%
@@ -100,7 +102,7 @@ exported_states <-
   with(state_merged,
        data.table(UID = UID, stateName = substr(dispID, 1, nchar(dispID) - 5)))
 state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
-  mutate(resolution = "state_USA_Canada",
+  mutate(resolution = "state_USA",
          dispID = paste0(stateName, ", USA")) %>%
   select(UID, dispID, date, resolution, date_lag,
          starts_with("Rt_"), starts_with("positive"), starts_with("death"))
@@ -340,7 +342,7 @@ provinces_merged <- provinces_sf_final %>%
   merge(provinces_wide, by = "UID", all = FALSE) %>%
   rename(dispID = Combined_Key) %>%
   mutate(resolution = case_when(
-    Country_Region == "Canada" ~ "state_USA_Canada",
+    Country_Region == "Canada" ~ "state_Canada",
     Country_Region == "China" ~ "state_China",
     Country_Region == "Australia" ~ "state_Australia")) %>%
   select(UID, dispID, resolution, starts_with("Rt_"))
@@ -348,7 +350,7 @@ provinces_merged <- provinces_sf_final %>%
 exported_provinces <- data.table(UID = provinces_merged$UID)
 provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
   mutate(resolution = case_when(
-    Country_Region == "Canada" ~ "state_USA_Canada",
+    Country_Region == "Canada" ~ "state_Canada",
     Country_Region == "China" ~ "state_China",
     Country_Region == "Australia" ~ "state_Australia")) %>%
   select(UID, dispID = Combined_Key, date, date_lag, resolution,
@@ -520,12 +522,13 @@ get_lnglat <- function(geometry, UID) {
 }
 
 
-usa_counties <- sf_all %>%
-  filter(resolution == "state_USA_Canada", UID > 12499) %>%
+usa_state_counties <- sf_all %>%
+  filter(resolution == "state_USA", UID > 12499) %>%
   select(UID, dispID, geometry)
 
-state_centers <- map2(usa_counties$geometry, usa_counties$UID, get_lnglat)
-names(state_centers) <- usa_counties$UID
+state_centers <- map2(usa_state_counties$geometry, usa_state_counties$UID,
+                      get_lnglat)
+names(state_centers) <- usa_state_counties$UID
 
 ########################################################################
 ## Save everything
