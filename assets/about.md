@@ -1,6 +1,3 @@
-----
-fontsize:12pt
-----
 
 ## Website Usage
 
@@ -194,4 +191,3 @@ School of Public Health](https://www.hsph.harvard.edu/).
    viral shedding and transmissibility of COVID-19. *Nature Medicine*,
    26(5), pp.672-675. doi:
    [10.1038/s41591-020-0869-5](https://doi.org/10.1038/s41591-020-0869-5)
-
