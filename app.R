@@ -80,7 +80,7 @@ addCircles_default <-
 # get range of possible dates
 dates <- unique(rt_long_all$date_lag)
 min_date <- min(dates)
-max_date <- as.Date("2020-06-04", format = "%Y-%m-%d")
+max_date <- max(dates)
 
 ########################################################################
 ## Define helper functions
@@ -154,9 +154,10 @@ get_county_uids <- function(state_uid_str) {
 #' @param state_uid A state UID string. If non-null, uses the state UID to
 #' select the counties in that state. See get_county_uids.
 sf_by_date_res <- function(date_select,
-                           sel_resolution = c("state_USA_Canada", "state_China",
-                                              "state_Australia", "county",
-                                              "country"), state_uid = NULL) {
+                           sel_resolution = c("state_USA", "state_Canada",
+                                              "state_China", "state_Australia",
+                                              "county", "country"),
+                           state_uid = NULL) {
   sel_resolution <- match.arg(sel_resolution)
   date_str <- format(date_select, "%Y-%m-%d")
   rt_col <- paste0("Rt_plot_", date_str)
@@ -240,13 +241,42 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
   }
 }
 
+click_plot <- function(plt_dat) {
+  place_name <- unique(plt_dat$dispID)
+  rt_plt_title <- sprintf("Rt for %s", place_name)
+  ylim_max <- ceiling(max(plt_dat$Rt_upr))
+  xlim_max <- max(plt_dat$date)
+  xlim_min <- min(plt_dat$date_lag)
+  rt_plt <- plt_dat %>%
+    ggplot(aes(x = date_lag, y = Rt_plot)) +
+    geom_point(color = "black") +
+    geom_errorbar(aes(ymin = Rt_lwr, ymax = Rt_upr), color = "black") +
+    geom_smooth(method = "loess", se = TRUE, formula = y ~ x) +
+    geom_hline(yintercept = 1, lty = 2) +
+    xlab("Date (lagged 5 days)") + ylab("") + ggtitle(rt_plt_title) +
+    ylim(0, ylim_max) + xlim(xlim_min, xlim_max) +
+    theme_cowplot() +
+    background_grid(major = "xy", minor = "xy")
+  newcases_plt_title <- sprintf("Daily New Cases for %s", place_name)
+  newcases_plt <- plt_dat %>%
+    ggplot(aes(x = date, y = positiveIncrease)) +
+    geom_point() + geom_line() +
+    xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
+    theme_cowplot() +
+    xlim(xlim_min, xlim_max) +
+    background_grid(major = "xy", minor = "xy")
+  final_plt <- plot_grid(rt_plt, newcases_plt, nrow = 2, align = "v",
+                          axis = "l")
+  return(final_plt)
+}
+
 ########################################################################
 ## Define UI
 ########################################################################
 
 ui <- fluidPage(
-  tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}"),
-  tags$head(tags$style(type = "text/css", "body {font-size: 16px}")),
+  tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
+  tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
   titlePanel("Visualizing COVID-19's Effective Reproduction Number (Rt)"),
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
@@ -262,10 +292,11 @@ ui <- fluidPage(
                       animate = animationOptions(interval = 3000)),
           selectInput("select_resolution", "Resolution:",
                       choices = list("World" = "country",
-                                     "US States and Canadian Provinces" = "state_USA_Canada",
+                                     "US States" = "state_USA",
+                                     "US Counties" = "county",
+                                     "Canadian Provinces" = "state_Canada",
                                      "Australian Provinces" = "state_Australia",
-                                     "Chinese Provinces" = "state_China",
-                                     "US Counties" = "county")),
+                                     "Chinese Provinces" = "state_China")),
           # plot of Rt over time
           plotOutput("RtOverTime", height = "600px")
         ), # end of sidebarPanel
@@ -323,21 +354,30 @@ ui <- fluidPage(
       # output at the bottom
       fluidRow(
         column(6, align = "center",
-          plotOutput("explore_states_counties", height = "450px")
+          plotOutput("explore_states_counties", height = "500px")
         ),
         column(6, align = "center",
-          leafletOutput("explore_states_out", height = "450px")
+          leafletOutput("explore_states_out", height = "500px")
         )
       ),
       fluidRow(
-        h4(textOutput("Rt_table_explore_states_title")),
-        DT::DTOutput("Rt_table_explore_states"),
-        p("Occasionally, locations may have negative values for new cases or new deaths because of reporting issues.")
+        column(5, align = "center",
+          plotOutput("RtOverTime_exploreState", height = "500px")
+        ),
+        column(7, align = "left",
+          h4(textOutput("Rt_table_explore_states_title")),
+          DT::DTOutput("Rt_table_explore_states"),
+          p("Occasionally, locations may have negative values for new cases or new deaths because of reporting issues.")
+        )
       )
     ), # end of tabPanel
     # Fourth tab: About page
     tabPanel("About",
-      includeMarkdown("assets/about.md")
+      withTags({
+        div(class = "aboutpage",
+          includeMarkdown("assets/about.md")
+        )
+      })
     )
   ) # end of tabsetPanel
 ) # end of fluidPage
@@ -367,7 +407,8 @@ server <- function(input, output, session) {
   observe({
     sel_resolution <- input$select_resolution
     cur_view <- switch(sel_resolution,
-      "state_USA_Canada" = c(-96, 44, 4),
+      "state_USA" = c(-96, 37.8, 4),
+      "state_Canada" = c(-100.78, 51.52, 3),
       "state_China" = c(104.4, 34.7, 4),
       "state_Australia" = c(135.5, -26.1, 4),
       "county" = c(-96, 37.8, 4),
@@ -419,34 +460,7 @@ server <- function(input, output, session) {
     click <- input$RtMap_shape_click
     plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
     if (nrow(plt_dat) > 0) {
-      place_name <- unique(plt_dat$dispID)
-      rt_plt_title <- sprintf("Rt for %s", place_name)
-      ylim_max <- ceiling(max(plt_dat$Rt_upr))
-      xlim_max <- max(plt_dat$date)
-      xlim_min <- min(plt_dat$date_lag)
-      suppressWarnings({
-        rt_plt <- plt_dat %>%
-          ggplot(aes(x = date_lag, y = Rt_plot)) +
-          geom_point(color = "black") +
-          geom_errorbar(aes(ymin = Rt_lwr, ymax = Rt_upr), color = "black") +
-          geom_smooth(method = "loess", se = TRUE, formula = y ~ x) +
-          geom_hline(yintercept = 1, lty = 2) +
-          xlab("Date (lagged 5 days)") + ylab("") + ggtitle(rt_plt_title) +
-          ylim(0, ylim_max) + xlim(xlim_min, xlim_max) +
-          theme_cowplot() +
-          background_grid(major = "xy", minor = "xy")
-        newcases_plt_title <- sprintf("Daily New Cases for %s", place_name)
-        newcases_plt <- plt_dat %>%
-          ggplot(aes(x = date, y = positiveIncrease)) +
-          geom_point() + geom_line() +
-          xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
-          theme_cowplot() +
-          xlim(xlim_min, xlim_max) +
-          background_grid(major = "xy", minor = "xy")
-        final_plt <- plot_grid(rt_plt, newcases_plt, nrow = 2, align = "v",
-                               axis = "l")
-        final_plt
-      })
+      suppressWarnings(click_plot(plt_dat))
     }
   }, cacheKeyExpr = { input$RtMap_shape_click$id })
 
@@ -466,8 +480,11 @@ server <- function(input, output, session) {
     ret_df <- rt_long_all %>%
       dplyr::filter(resolution == sel_resolution, date_lag == date_select,
                     positive >= 50) %>%
-      dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA)) %>%
-      dplyr::select(Location = dispID, Rt, `Total Cases` = positive,
+      dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
+                    Rt_lwr = round(Rt_lwr, 2),
+                    Rt_upr = round(Rt_upr, 2)) %>%
+      dplyr::select(Location = dispID, Rt, `CI Lower` = Rt_lwr,
+                    `CI Upper` = Rt_upr, `Total Cases` = positive,
                     `New Cases` = positiveIncrease, `Total Deaths` = death,
                     `New Deaths` = deathIncrease) %>%
       dplyr::arrange(desc(Rt), desc(`Total Cases`))
@@ -634,8 +651,8 @@ server <- function(input, output, session) {
         xlab("Date (lagged 5 days)") + ylab("County") + ggtitle(plt_title) +
         theme_cowplot() +
         scale_y_discrete(limits = rev(levels(plt_data_pruned$County))) +
-        theme(axis.text.y = element_text(size = 10),
-              legend.text = element_text(size = 12))
+        theme(axis.text.y = element_text(size = 14),
+              legend.text = element_text(size = 16))
     } else {
       # draw empty plot
       p <- ggplot()
@@ -650,12 +667,26 @@ server <- function(input, output, session) {
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
       dplyr::filter(date == date_select) %>%
-      dplyr::mutate(Rt = ifelse(Rt_plot >= 0, round(Rt_plot, 2), NA)) %>%
-      dplyr::select(Location = dispID, Rt, `Total Cases` = positive,
+      dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
+                    Rt_lwr = round(Rt_lwr, 2),
+                    Rt_upr = round(Rt_upr, 2)) %>%
+      dplyr::select(Location = dispID, Rt, `CI Lower` = Rt_lwr,
+                    `CI Upper` = Rt_upr, `Total Cases` = positive,
                     `New Cases` = positiveIncrease, `Total Deaths` = death,
                     `New Deaths` = deathIncrease) %>%
-      dplyr::arrange(desc(Rt))
+      dplyr::arrange(desc(Rt), desc(`Total Cases`))
   }, server = FALSE)
+
+  output$RtOverTime_exploreState <- renderCachedPlot({
+    validate(need(input$explore_states_out_shape_click,
+                  message = "Click on a location to show Rt and new cases over time."))
+    click <- input$explore_states_out_shape_click
+    plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
+    if (nrow(plt_dat) > 0) {
+      suppressWarnings(click_plot(plt_dat))
+    }
+  }, cacheKeyExpr = { input$explore_states_out_shape_click$id })
+
 
   output$Rt_table_explore_states_title <- renderText({
     req(input$state_select_date)
