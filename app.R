@@ -283,6 +283,20 @@ click_plot <- function(plt_dat) {
   return(final_plt)
 }
 
+munge_for_dt <- function(df) {
+  ret <- df %>%
+    dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
+                  Rt_lwr = round(Rt_lwr, 2),
+                  Rt_upr = round(Rt_upr, 2),
+                  positiveIncr_percapita = round(positiveIncr_percapita, 2)) %>%
+    dplyr::select(Location = dispID, Rt, `CI Lower` = Rt_lwr,
+                  `CI Upper` = Rt_upr, `Total Cases` = positive,
+                  `New Cases` = positiveIncrease,
+                  `New Cases per Million` = positiveIncr_percapita) %>%
+    dplyr::arrange(desc(Rt), desc(`Total Cases`))
+  return(ret)
+}
+
 ########################################################################
 ## Define UI
 ########################################################################
@@ -494,14 +508,7 @@ server <- function(input, output, session) {
     ret_df <- rt_long_all %>%
       dplyr::filter(resolution == sel_resolution, date_lag == date_select,
                     positive >= 50) %>%
-      dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
-                    Rt_lwr = round(Rt_lwr, 2),
-                    Rt_upr = round(Rt_upr, 2)) %>%
-      dplyr::select(Location = dispID, Rt, `CI Lower` = Rt_lwr,
-                    `CI Upper` = Rt_upr, `Total Cases` = positive,
-                    `New Cases` = positiveIncrease, `Total Deaths` = death,
-                    `New Deaths` = deathIncrease) %>%
-      dplyr::arrange(desc(Rt), desc(`Total Cases`))
+      munge_for_dt()
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
   }, server = FALSE, options = list(pageLength = 25))
@@ -558,10 +565,10 @@ server <- function(input, output, session) {
         theme(text = element_text(size = 18),
               axis.text = element_text(size = 15))
 
-      cumcases_plt <- cur_dat %>%
-        ggplot(aes(x = date, y = positive, color = dispID)) +
-        geom_line() + geom_point() + xlab("Date") + ylab("Total Cases") +
-        ggtitle("Comparison of Total Cases") +
+      newcases_percapita_plt <- cur_dat %>%
+        ggplot(aes(x = date, y = positiveIncr_percapita, color = dispID)) +
+        geom_line() + geom_point() + xlab("Date") + ylab("") +
+        ggtitle("Comparison of New Cases per Million Population") +
         xlim(xlim_min, xlim_max) +
         scale_color_discrete(name = "Location") +
         scale_fill_discrete(name = "Location") +
@@ -570,19 +577,7 @@ server <- function(input, output, session) {
               axis.text = element_text(size = 15)) +
         scale_y_continuous(labels = scales::comma, trans = "log10")
 
-      percapita_plt <- cur_dat %>%
-        ggplot(aes(x = date, y = positive_percapita, color = dispID)) +
-        geom_line() + geom_point() + xlab("Date") +
-        ylab("Cumulative Cases per 10000") +
-        ggtitle("Comparison of Cases per 10000") +
-        xlim(xlim_min, xlim_max) +
-        scale_color_discrete(name = "Location") +
-        scale_fill_discrete(name = "Location") +
-        theme_cowplot() +
-        theme(text = element_text(size = 18),
-              axis.text = element_text(size = 15))
-
-      plt_out <- plot_grid(rt_plt, newcases_plt, cumcases_plt, percapita_plt,
+      plt_out <- plot_grid(rt_plt, newcases_plt, newcases_percapita_plt,
                            ncol = 1, align = "v", axis = "l")
       plt_out
     })
@@ -693,14 +688,7 @@ server <- function(input, output, session) {
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
       dplyr::filter(date_lag == date_select) %>%
-      dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
-                    Rt_lwr = round(Rt_lwr, 2),
-                    Rt_upr = round(Rt_upr, 2)) %>%
-      dplyr::select(Location = dispID, Rt, `CI Lower` = Rt_lwr,
-                    `CI Upper` = Rt_upr, `Total Cases` = positive,
-                    `New Cases` = positiveIncrease, `Total Deaths` = death,
-                    `New Deaths` = deathIncrease) %>%
-      dplyr::arrange(desc(Rt), desc(`Total Cases`))
+      munge_for_dt()
   }, server = FALSE)
 
   output$RtOverTime_exploreState <- renderCachedPlot({
