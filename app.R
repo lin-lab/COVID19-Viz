@@ -574,8 +574,7 @@ server <- function(input, output, session) {
         scale_fill_discrete(name = "Location") +
         theme_cowplot() +
         theme(text = element_text(size = 18),
-              axis.text = element_text(size = 15)) +
-        scale_y_continuous(labels = scales::comma, trans = "log10")
+              axis.text = element_text(size = 15))
 
       plt_out <- plot_grid(rt_plt, newcases_plt, newcases_percapita_plt,
                            ncol = 1, align = "v", axis = "l")
