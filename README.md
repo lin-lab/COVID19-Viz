@@ -12,6 +12,11 @@ Center](https://github.com/CSSEGISandData/COVID-19). Rt calculated using
 If you downloaded the app locally, have all the dependencies, and wish to run
 it, simply open the `app.R` file in RStudio and click the `Run App` button.
 
+## Download our Data
+
+Please see the data files in the `clean_data` folder for the cleaned data that
+was displayed on the website.
+
 ## Code Structure
 
 + The code to download the data is in `01_download_rt.sh`.
