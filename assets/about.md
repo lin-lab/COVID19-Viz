@@ -38,12 +38,12 @@ of Rt, but the sorting can be changed by clicking a column header.
 To download a plot, you can right-click on it and select "Save Image As..." Then
 you'll be able to save the plot to your computer. Right now we do not have a way
 to save a map, but in the meantime you can take a screenshot. To download the Rt
-values used on this website, please see our csv/tsv files on our [COVID19-Rt
-Github](https://github.com/lin-lab/COVID19-Rt/tree/master/initial_estimates).
+values, case / death counts, and other information shown in the tables, please
+see the [Rt table CSV on our Github
+page](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data/).
 
 If you'd like the shapefiles with Rt information merged that we used for our
-maps, they are saved as an RDS file on our [COVID19-Viz
-Github](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data/sf_all.rds).
+maps, they are saved as an RDS file on our [Github](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data/sf_all.rds).
 
 
 ## Rt Method Description
@@ -72,7 +72,7 @@ Here we focused on using the EpiEstim method (Cori, A., et al., 2013; Thompson,
 R.N., et al., 2019) to estimate the daily Rt value. The EpiEstim method requires
 the following inputs (and outputs the daily Rt estimates):
 
-+ Daily positive increase cases: we used data from Johns Hopkins University the
++ Daily positive increase cases: we used data from Johns Hopkins University
   Center for Systems Science and Engineering (JHU-CSSE) [Coronavirus Resource
   Center](https://github.com/CSSEGISandData/COVID-19) ([Dong, E., et al,
   2020](https://doi.org/10.1016/S1473-3099%2820%2930120-1)).
