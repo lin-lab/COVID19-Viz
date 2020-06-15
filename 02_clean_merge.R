@@ -13,13 +13,15 @@ library(rgeos)
 library(purrr)
 library(ggplot2)
 
-#' Lag and subset the Rt data.
+#' Lag, subset, and modify the Rt data.
 #'
 #' This function lags the Rt by a specified number of days. Then, we filter
 #' out Rts outside the date range. We also set Rt to be NA on days when there
 #' are not enough total cases or when the average number of new cases in the
 #' past few days is below a certain threshold. We do this for each location in
-#' the data.
+#' the data. Finally, we add a the average number of new cases in the past 7
+#' days and number of cumulative cases per 10,000 people as new columns
+#' positive_7day and positive_percapita in the data.
 #'
 #' @param dt Input data frame. Assumed to have columns date, positiveIncrease,
 #' positive, mean_rt, ci_upper, ci_lower.
@@ -35,7 +37,7 @@ library(ggplot2)
 #' @param start_date Take times after this start date.
 #' @param end_date Take times before this end date.
 #'
-lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
+lag_subset_mod <- function(dt, group_var = "UID", nlag = 5,
                            window_size = 7, pos_cutoff = 50,
                            posincr_cutoff = 10,
                            start_date = ymd("2020-03-19"),
@@ -47,6 +49,10 @@ lag_and_subset <- function(dt, group_var = "UID", nlag = 5,
   dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
                                     align = "right", algo = "exact"),
       by = group_var]
+  dt[, positive_7day := frollmean(positiveIncrease, n = 7,
+                                  align = "right", algo = "exact"),
+      by = group_var]
+  dt[, positive_percapita := 10000 * positive / population]
   ret <- dt[date >= start_date & date <= end_date & !is.na(rolling_posIncr)]
   ret[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
       `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
@@ -66,10 +72,13 @@ end_date <- today()
 state_rt_long_orig <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
   data.table()
 
-state_rt_long <- lag_and_subset(state_rt_long_orig, "stateName",
+state_rt_long <- lag_subset_mod(state_rt_long_orig, "stateName",
                                 end_date = end_date)
-state_rt_long[stateName == "Michigan" & date >= ymd("2020-05-31"),
-              .(date, date_lag, mean_rt, positiveIncrease)]
+
+state_rt_long[date >= end_date - ddays(2),
+              .(stateName, positive, population, positive_percapita)][
+              order(positive_percapita, decreasing = TRUE)]
+
 
 # check that we calculated the rolling mean correctly
 state_check <- state_rt_long[stateName == "New Jersey", ]
@@ -146,7 +155,7 @@ county_rt_long_orig <- read_tsv("raw_data/jhu_county_rt.tsv",
                                 guess_max = 10000) %>%
   data.table()
 
-county_rt_long <- lag_and_subset(county_rt_long_orig, end_date = end_date)
+county_rt_long <- lag_subset_mod(county_rt_long_orig, end_date = end_date)
 stopifnot(all(county_rt_long$Rt_upr >= county_rt_long$Rt_lwr, na.rm = TRUE))
 
 # make combined key for county rt long
@@ -277,11 +286,11 @@ global_rt_long_orig[, date := ymd(date)]
 global_rt_long_orig[UID == 12406,
                     Combined_Key := "Northwest Territories, Canada"]
 
-global_rt_long <- lag_and_subset(global_rt_long_orig, end_date = end_date)
+global_rt_long <- lag_subset_mod(global_rt_long_orig, end_date = end_date)
 stopifnot(all(global_rt_long$Rt_upr >= global_rt_long$Rt_lwr, na.rm = TRUE))
 
 global_rt_wide <- global_rt_long %>%
-  select(-Population, -interval_start, -FIPS, -Admin2, -positiveIncrease,
+  select(-population, -interval_start, -FIPS, -Admin2, -positiveIncrease,
          -deathIncrease, -positive, -positiveIncrease, -death) %>%
   pivot_wider(id_cols = c(UID, Province_State:Combined_Key),
               names_from = date_lag,

@@ -17,7 +17,7 @@ library(cowplot)
 library(htmltools)
 library(purrr)
 library(dplyr)
-library(readr)
+library(tidyr)
 
 ########################################################################
 ## Load data files
@@ -256,15 +256,28 @@ click_plot <- function(plt_dat) {
     xlab("Date (lagged 5 days)") + ylab("") + ggtitle(rt_plt_title) +
     ylim(0, ylim_max) + xlim(xlim_min, xlim_max) +
     theme_cowplot() +
-    background_grid(major = "xy", minor = "xy")
-  newcases_plt_title <- sprintf("Daily New Cases for %s", place_name)
+    background_grid(major = "xy", minor = "xy") +
+    theme(text = element_text(size = 18),
+          axis.text = element_text(size = 15))
+
+  newcases_plt_title <- sprintf("New Cases for %s", place_name)
   newcases_plt <- plt_dat %>%
-    ggplot(aes(x = date, y = positiveIncrease)) +
-    geom_point() + geom_line() +
+    select(date, positiveIncrease, positive_7day) %>%
+    pivot_longer(cols = starts_with("positive"),
+                 names_to = "Type", values_to = "value") %>%
+    ggplot(aes(x = date, y = value, linetype = Type)) +
+    geom_line() +
+    scale_linetype_discrete(name = "",
+                            breaks = c("positive_7day", "positiveIncrease"),
+                            labels = c("7-day avg of new cases",
+                                       "Daily new cases")) +
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
     xlim(xlim_min, xlim_max) +
-    background_grid(major = "xy", minor = "xy")
+    background_grid(major = "xy", minor = "xy") +
+    theme(text = element_text(size = 18),
+          axis.text = element_text(size = 15),
+          legend.position = "bottom")
   final_plt <- plot_grid(rt_plt, newcases_plt, nrow = 2, align = "v",
                           axis = "l")
   return(final_plt)
@@ -329,7 +342,7 @@ ui <- fluidPage(
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
-          plotOutput("compare_plt_out", height = "1200px", width = "100%")
+          plotOutput("compare_plt_out", height = "1500px", width = "100%")
         )
       ) # end of sideBarLayout
     ), # end of tabPanel
@@ -556,8 +569,20 @@ server <- function(input, output, session) {
               axis.text = element_text(size = 15)) +
         scale_y_continuous(labels = scales::comma, trans = "log10")
 
-      plt_out <- plot_grid(rt_plt, newcases_plt, cumcases_plt, ncol = 1,
-                          align = "v", axis = "l")
+      percapita_plt <- cur_dat %>%
+        ggplot(aes(x = date, y = positive_percapita, color = dispID)) +
+        geom_line() + geom_point() + xlab("Date") +
+        ylab("Cumulative Cases per 10000") +
+        ggtitle("Comparison of Cases per 10000") +
+        xlim(xlim_min, xlim_max) +
+        scale_color_discrete(name = "Location") +
+        scale_fill_discrete(name = "Location") +
+        theme_cowplot() +
+        theme(text = element_text(size = 18),
+              axis.text = element_text(size = 15))
+
+      plt_out <- plot_grid(rt_plt, newcases_plt, cumcases_plt, percapita_plt,
+                           ncol = 1, align = "v", axis = "l")
       plt_out
     })
   })
