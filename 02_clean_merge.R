@@ -501,7 +501,9 @@ us_state_dt <- state_province_names %>%
 
 county_names_unsrt <- sf_all %>%
   filter(resolution == "county") %>%
-  select(dispID, UID)
+  select(dispID, UID) %>%
+  separate(col = "dispID", into = c("County", "State"),
+           sep = ", ", remove = FALSE)
 county_ord <- county_names_unsrt$dispID %>%
   strsplit(", ", fixed = TRUE) %>%
   vapply(function(x) { paste(x[2], x[1]) }, "Utah") %>%
@@ -513,17 +515,23 @@ country_names <- sf_all %>%
   select(dispID, UID) %>%
   arrange(dispID)
 
+us_states_w_counties <- us_state_dt %>%
+  filter(state %in% unique(county_names$State), state != "District of Columbia")
+stopifnot(nrow(us_states_w_counties) == 50)
+
 names_list <- list(
   state = as.list(state_province_names$UID),
   county = as.list(county_names$UID),
   country = as.list(country_names$UID),
-  us_state = as.list(us_state_dt$UID))
+  us_state = as.list(us_state_dt$UID),
+  us_states_w_counties = as.list(us_states_w_counties$UID))
 names(names_list$state) <- state_province_names$dispID
 names(names_list$county) <- county_names$dispID
 names(names_list$country) <- country_names$dispID
 names(names_list$us_state) <- us_state_dt$state
+names(names_list$us_states_w_counties) <- us_states_w_counties$state
 
-names_dt <- data.table(names = c(state_province_names$dispID,
+names_dt <- data.table(names = c(state_province_names$UID,
                                  county_names$UID,
                                  country_names$UID))
 rep_names <- names_dt[, .N, by = names][N > 1, ]

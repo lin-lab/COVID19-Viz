@@ -354,7 +354,7 @@ ui <- fluidPage(
           h4("Select a state to explore."),
           selectizeInput("state_select", label = "State",
                          selected = "84000025",
-                         choices = place_choices$us_state,
+                         choices = place_choices$us_states_w_counties,
                          multiple = FALSE)
         ),
         column(6, align = "center",
@@ -691,7 +691,7 @@ server <- function(input, output, session) {
     validate(need(input$state_select_date, message = "Please select a state."))
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
-      dplyr::filter(date == date_select) %>%
+      dplyr::filter(date_lag == date_select) %>%
       dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
                     Rt_lwr = round(Rt_lwr, 2),
                     Rt_upr = round(Rt_upr, 2)) %>%
