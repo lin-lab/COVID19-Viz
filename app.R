@@ -332,7 +332,8 @@ ui <- fluidPage(
           leafletOutput("RtMap", height = "80vh", width = "100%"),
           h4(textOutput("Rt_table_title")),
           DT::DTOutput("Rt_table"),
-          p("Only locations with more than 50 total cases are shown. Occasionally, locations may have negative values for new cases or new deaths because of reporting issues.")
+          br(),
+          includeMarkdown("assets/Rt_table_footer.md")
         )
       ) # end of sidebarLayout
     ), # end of tabPanel
@@ -395,7 +396,8 @@ ui <- fluidPage(
         column(7, align = "left",
           h4(textOutput("Rt_table_explore_states_title")),
           DT::DTOutput("Rt_table_explore_states"),
-          p("Occasionally, locations may have negative values for new cases or new deaths because of reporting issues.")
+          br(),
+          includeMarkdown("assets/Rt_table_footer.md")
         )
       )
     ), # end of tabPanel
