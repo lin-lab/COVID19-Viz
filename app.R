@@ -290,6 +290,7 @@ click_plot <- function(plt_dat) {
 ui <- fluidPage(
   tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
   tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
+  tags$head(includeHTML("assets/google-analytics.html")),
   titlePanel("Visualizing COVID-19's Effective Reproduction Number (Rt)"),
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
