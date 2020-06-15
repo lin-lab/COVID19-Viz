@@ -17,7 +17,6 @@ library(cowplot)
 library(htmltools)
 library(purrr)
 library(dplyr)
-library(tidyr)
 
 ########################################################################
 ## Load data files
@@ -264,13 +263,12 @@ click_plot <- function(plt_dat) {
   newcases_plt_title <- sprintf("New Cases for %s", place_name)
   newcases_plt <- plt_dat %>%
     select(date, positiveIncrease, positive_7day) %>%
-    pivot_longer(cols = starts_with("positive"),
-                 names_to = "Type", values_to = "value") %>%
-    ggplot(aes(x = date, y = value, linetype = Type)) +
-    geom_line() +
+    ggplot(aes(x = date)) +
+    geom_line(aes(y = positive_7day, linetype = "positive_7day")) +
+    geom_line(aes(y = positiveIncrease, linetype = "positiveIncrease")) +
     scale_linetype_discrete(name = "",
                             breaks = c("positive_7day", "positiveIncrease"),
-                            labels = c("7-day avg of new cases",
+                            labels = c("7-day average of new cases",
                                        "Daily new cases")) +
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
@@ -278,7 +276,8 @@ click_plot <- function(plt_dat) {
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
-          legend.position = "bottom")
+          legend.position = "bottom") +
+    guides(linetype = guide_legend(nrow = 2))
   final_plt <- plot_grid(rt_plt, newcases_plt, nrow = 2, align = "v",
                           axis = "l")
   return(final_plt)
