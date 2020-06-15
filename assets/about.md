@@ -62,12 +62,7 @@ the following inputs (and outputs the daily Rt estimates):
 + Daily positive increase cases: we used data from Johns Hopkins University the
   Center for Systems Science and Engineering (JHU-CSSE) [Coronavirus Resource
   Center](https://github.com/CSSEGISandData/COVID-19) ([Dong, E., et al,
-  2020](https://doi.org/10.1016/S1473-3099%2820%2930120-1)). During the course
-  of the COVID-19 pandemic, some states changed their reporting criteria which
-  caused a big spike in cases. For those states, we instead used the state
-  government provided data. See our [page on the COVID-data-cleaning
-  repo](https://github.com/lin-lab/COVID-data-cleaning/tree/master/jhu_data/supp_data)
-  for more information.
+  2020](https://doi.org/10.1016/S1473-3099%2820%2930120-1)).
 
 + The time window of daily positive increase cases to be averaged (to smooth out
   the discreteness due to reporting). For our analysis, a 7-day window was used
