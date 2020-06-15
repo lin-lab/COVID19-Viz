@@ -19,9 +19,8 @@ library(ggplot2)
 #' out Rts outside the date range. We also set Rt to be NA on days when there
 #' are not enough total cases or when the average number of new cases in the
 #' past few days is below a certain threshold. We do this for each location in
-#' the data. Finally, we add a the average number of new cases in the past 7
-#' days and number of cumulative cases per 10,000 people as new columns
-#' positive_7day and positive_percapita in the data.
+#' the data. We also compute the per capita case and death rate (per 10000)
+#' and the per capita new cases and new deaths (per million)
 #'
 #' @param dt Input data frame. Assumed to have columns date, positiveIncrease,
 #' positive, mean_rt, ci_upper, ci_lower.
@@ -52,7 +51,10 @@ lag_subset_mod <- function(dt, group_var = "UID", nlag = 5,
   dt[, positive_7day := frollmean(positiveIncrease, n = 7,
                                   align = "right", algo = "exact"),
       by = group_var]
-  dt[, positive_percapita := 10000 * positive / population]
+  dt[, positive_percapita := 1e4 * positive/ population]
+  dt[, death_percapita := 1e4 * death / population]
+  dt[, positiveIncr_percapita := 1e6 * positiveIncrease / population]
+  dt[, deathIncr_percapita := 1e6 * deathIncrease / population]
   ret <- dt[date >= start_date & date <= end_date & !is.na(rolling_posIncr)]
   ret[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
       `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
@@ -574,3 +576,4 @@ saveRDS(sf_all, "clean_data/sf_all.rds")
 saveRDS(rt_long_all, "clean_data/rt_long_all.rds")
 saveRDS(names_list, "clean_data/names_list.rds")
 saveRDS(state_centers, "clean_data/state_centers.rds")
+write_csv(rt_long_all, "clean_data/rt_table.csv")
