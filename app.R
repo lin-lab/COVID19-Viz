@@ -343,7 +343,7 @@ ui <- fluidPage(
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
-          plotOutput("compare_plt_out", height = "1500px", width = "100%")
+          plotOutput("compare_plt_out", height = "1200px", width = "100%")
         )
       ) # end of sideBarLayout
     ), # end of tabPanel
@@ -570,19 +570,7 @@ server <- function(input, output, session) {
               axis.text = element_text(size = 15)) +
         scale_y_continuous(labels = scales::comma, trans = "log10")
 
-      percapita_plt <- cur_dat %>%
-        ggplot(aes(x = date, y = positive_percapita, color = dispID)) +
-        geom_line() + geom_point() + xlab("Date") +
-        ylab("Cumulative Cases per 10000") +
-        ggtitle("Comparison of Cases per 10000") +
-        xlim(xlim_min, xlim_max) +
-        scale_color_discrete(name = "Location") +
-        scale_fill_discrete(name = "Location") +
-        theme_cowplot() +
-        theme(text = element_text(size = 18),
-              axis.text = element_text(size = 15))
-
-      plt_out <- plot_grid(rt_plt, newcases_plt, cumcases_plt, percapita_plt,
+      plt_out <- plot_grid(rt_plt, newcases_plt, cumcases_plt,
                            ncol = 1, align = "v", axis = "l")
       plt_out
     })
