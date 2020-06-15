@@ -241,6 +241,7 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
   }
 }
 
+#' Generate a plot of Rt over time and new cases over time based on map click.
 click_plot <- function(plt_dat) {
   place_name <- unique(plt_dat$dispID)
   rt_plt_title <- sprintf("Rt for %s", place_name)

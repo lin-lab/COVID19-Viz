@@ -33,6 +33,19 @@ clicking and dragging. Below the map, there is a table of Rt for the date
 selected using the slider. This table is by default sorted in descending order
 of Rt, but the sorting can be changed by clicking a column header.
 
+### Downloading Plots / Maps / Rt
+
+To download a plot, you can right-click on it and select "Save Image As..." Then
+you'll be able to save the plot to your computer. Right now we do not have a way
+to save a map, but in the meantime you can take a screenshot. To download the Rt
+values used on this website, please see our csv/tsv files on our [COVID19-Rt
+Github](https://github.com/lin-lab/COVID19-Rt/tree/master/initial_estimates).
+
+If you'd like the shapefiles with Rt information merged that we used for our
+maps, they are saved as an RDS file on our [COVID19-Viz
+Github](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data/sf_all.rds).
+
+
 ## Rt Method Description
 
 We calculate and report the daily effective reproduction number (Rt) to
