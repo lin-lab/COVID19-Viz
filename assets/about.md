@@ -143,7 +143,7 @@ School of Public Health](https://www.hsph.harvard.edu/).
 
 + Website development: Andy Shi
 + Rt Calculation: Sheila Gaynor
-+ Sensitivity Analysis: Xihao Li, Hui Li, Zilin Lin, Derek Shyr
++ Sensitivity Analysis: Xihao Li, Hui Li, Zilin Li, Derek Shyr
 + Special thanks to Evan Sarmiento and the team at Harvard IQSS for help with
   hosting.
 
