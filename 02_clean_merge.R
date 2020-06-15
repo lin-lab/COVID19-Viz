@@ -89,13 +89,42 @@ state_rt_tomerge <- state_rt_long %>%
 state_maps <- ne_states(country = "united states of america",
                         returnclass = "sf")
 
+# Add points for American Samoa, Guam, Puerto Rico, etc
+sort(state_maps$name)
+jhu_states <- state_rt_tomerge$stateName
+add_states <- dplyr::setdiff(jhu_states, state_maps$name)
+print(add_states)
+
+unjoined_states <- state_rt_long %>%
+  filter(stateName %in% add_states) %>%
+  select(stateName, UID, Lat, Long_) %>%
+  distinct()
+
+#' Make point geometries from a data frame.
+#'
+make_points <- function(df, name_col, crs) {
+  point_lst <- list()
+  for (i in 1:nrow(df)) {
+    long_cur <- df$Long_[i]
+    lat_cur <- df$Lat[i]
+    point_lst[[i]] <- st_point(c(long_cur, lat_cur))
+  }
+
+  new_points <- st_sf(UID = df$UID,
+                      name = df[[name_col]],
+                      geometry = st_sfc(point_lst, crs = crs))
+  return(new_points)
+}
+
+new_state_points <- make_points(unjoined_states, "stateName", st_crs(state_maps))
+
 state_merged <- state_maps %>%
   select(name, geometry, fips) %>%
-  mutate(UID = as.integer(paste0("840000", substring(fips, 3))),
-         resolution = "state_USA", dispID = paste0(name, ", USA")) %>%
+  mutate(UID = as.integer(paste0("840000", substring(fips, 3)))) %>%
   select(-fips) %>%
-  merge(state_rt_tomerge, by.x = "name",
-                      by.y = "stateName", all.x = FALSE) %>%
+  rbind(new_state_points) %>%
+  merge(state_rt_tomerge, by.x = "name", by.y = "stateName", all.x = FALSE) %>%
+  mutate(resolution = "state_USA", dispID = paste0(name, ", USA")) %>%
   select(UID, dispID, resolution, starts_with("Rt_"))
 
 exported_states <-
@@ -313,22 +342,11 @@ provinces_sf <- provinces_sf_orig %>%
 macau_hk <- global_rt_wide[Province_State %in% c("Macau SAR", "Hong Kong SAR")]
 stopifnot(nrow(macau_hk) == 2)
 
-point_lst <- list()
-for (i in 1:nrow(macau_hk)) {
-  uid_cur <- macau_hk$UID[i]
-  lat_cur <- macau_hk$Lat[i]
-  long_cur <- macau_hk$Long_[i]
-
-  point_lst[[i]] <- st_point(c(long_cur, lat_cur))
-}
-
-macau_hk_sf <- st_sf(UID = macau_hk$UID,
-                     geometry = st_sfc(point_lst,
-                                       crs = st_crs(provinces_sf)))
+macau_hk_sf <- make_points(macau_hk, "Combined_Key", st_crs(provinces_sf))
 
 provinces_sf_final <- provinces_sf %>%
   select(UID, geometry) %>%
-  rbind(macau_hk_sf, .)
+  rbind(macau_hk_sf[, c("UID", "geometry")], .)
 
 # see which provinces didn't merge
 x1 <- data.frame(UID = provinces_sf_final$UID)
@@ -364,18 +382,30 @@ sf_tiny_countries <- ne_countries(type = "tiny_countries",
                                   returnclass = "sf")
 sf_world_orig <- ne_countries(returnclass = "sf")
 
+# separate out France and French Guiana
+french_guiana <- ne_states(geounit = "french guiana", returnclass = "sf") %>%
+  select(geometry) %>%
+  mutate(UID = 254, name = "French Guiana")
+metro_france <- st_sf(UID = 250, name = "France",
+  geometry = st_union(ne_states(geounit = "france", returnclass = "sf")))
+
 # ignore northern cyprus and somaliland but keep kosovo
 sf_world_orig %>%
   filter(is.na(iso_n3)) %>%
   select(admin)
+
+# get rid of France for now. France includes French Guiana, but French Guiana is
+# counted separately by JHU. We add France back in at the end.
 sf_world_use <- sf_world_orig %>%
+  filter(admin != "France") %>%
   mutate(
     UID = case_when(
       admin == "Kosovo" ~ 383L,
       TRUE ~ as.integer(iso_n3)
     )
   ) %>%
-  select(UID, name, geometry)
+  select(UID, name, geometry) %>%
+  rbind(french_guiana, metro_france)
 
 # ignore these countries
 sf_tiny_countries$iso_n3
@@ -398,6 +428,7 @@ sf_tiny_use <- sf_tiny_countries %>%
 
 sf_world_temp <- rbind(sf_world_use, sf_tiny_use)
 
+# Get countries hat don't join.
 x1 <- with(sf_world_temp,
            data.frame(UID = UID, name = name))
 x2 <- with(countries_wide,
@@ -412,19 +443,7 @@ unjoined_uids <- anti_join(x2, x1, by = "UID") %>%
 
 unjoined_latlong <- global_rt_wide[UID %in% unjoined_uids$UID,
                                    .(UID, Combined_Key, Lat, Long_)]
-point_lst <- list()
-for (i in 1:nrow(unjoined_latlong)) {
-  uid_cur <- unjoined_latlong$UID[i]
-  lat_cur <- unjoined_latlong$Lat[i]
-  long_cur <- unjoined_latlong$Long_[i]
-
-  point_lst[[i]] <- st_point(c(long_cur, lat_cur))
-}
-
-new_points <- st_sf(UID = unjoined_latlong$UID,
-                    name = unjoined_latlong$Combined_Key,
-                    geometry = st_sfc(point_lst,
-                                      crs = st_crs(sf_tiny_use)))
+new_points <- make_points(unjoined_latlong, "Combined_Key", st_crs(sf_tiny_use))
 
 sf_world <- rbind(sf_world_temp, new_points) %>%
   select(UID, geometry)
