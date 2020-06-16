@@ -13,6 +13,26 @@ library(rgeos)
 library(purrr)
 library(ggplot2)
 
+
+#' Calculate loess curve for Rt by date_lag.
+Rt_loess <- function(dat) {
+  if (nrow(dat) < 3) {
+    ret_df <- data.table(Rt_loess_fit = NA_real_,
+                         Rt_loess_lwr = NA_real_,
+                         Rt_loess_upr = NA_real_,
+                         rowid = dat$rowid)
+  } else {
+    loess_fit <- loess(Rt_plot ~ as.numeric(date_lag), data = dat)
+    pred_obj <- predict(loess_fit, dat, se = TRUE)
+    tstar <- qt(0.975, pred_obj$df)
+    ret_df <- data.table(Rt_loess_fit = pred_obj$fit,
+                        Rt_loess_lwr = pred_obj$fit - tstar * pred_obj$se.fit,
+                        Rt_loess_upr = pred_obj$fit + tstar * pred_obj$se.fit,
+                        rowid = dat$rowid)
+  }
+  return(ret_df)
+}
+
 #' Lag, subset, and modify the Rt data.
 #'
 #' This function lags the Rt by a specified number of days. Then, we filter
@@ -55,12 +75,21 @@ lag_subset_mod <- function(dt, group_var = "UID", nlag = 5,
   dt[, death_percapita := 1e4 * death / population]
   dt[, positiveIncr_percapita := 1e6 * positiveIncrease / population]
   dt[, deathIncr_percapita := 1e6 * deathIncrease / population]
-  ret <- dt[date >= start_date & date <= end_date & !is.na(rolling_posIncr)]
-  ret[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
+
+  dt_subset <- dt[date >= start_date & date <= end_date & !is.na(rolling_posIncr)]
+  dt_subset[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
       `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
-  ret[positive >= pos_cutoff & rolling_posIncr < posincr_cutoff,
+  dt_subset[positive >= pos_cutoff & rolling_posIncr < posincr_cutoff,
       Rt_plot := -88]
-  ret[positive < pos_cutoff, Rt_plot := -888]
+  dt_subset[positive < pos_cutoff, Rt_plot := -888]
+  dt_subset[, rowid := rep(1:.N)]
+
+  loess_dt <- dt_subset[Rt_plot > 0, Rt_loess(.SD), by = group_var]
+  ret <- merge(dt_subset,
+               loess_dt[, .(Rt_loess_fit, Rt_loess_lwr, Rt_loess_upr, rowid)] ,
+               by = "rowid", all.x = TRUE, all.y = FALSE)
+  ret[, rowid := NULL]
+
   return(ret)
 }
 
@@ -558,7 +587,6 @@ get_lnglat <- function(geometry, UID) {
   }
   return(c(lng, lat))
 }
-
 
 usa_state_counties <- sf_all %>%
   filter(resolution == "state_USA", UID > 12499) %>%

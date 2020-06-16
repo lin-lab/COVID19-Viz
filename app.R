@@ -248,13 +248,16 @@ click_plot <- function(plt_dat) {
   xlim_max <- max(plt_dat$date)
   xlim_min <- min(plt_dat$date_lag)
   rt_plt <- plt_dat %>%
-    ggplot(aes(x = date_lag, y = Rt_plot)) +
-    geom_point(color = "black") +
-    geom_errorbar(aes(ymin = Rt_lwr, ymax = Rt_upr), color = "black") +
-    geom_smooth(method = "loess", se = TRUE, formula = y ~ x) +
+    ggplot(aes(x = date_lag)) +
+    geom_ribbon(aes(ymin = Rt_loess_lwr, ymax = Rt_loess_upr, y = Rt_loess_fit),
+                fill = "#d6d6d6") +
+    geom_point(aes(y = Rt_plot), color = "black") +
+    geom_errorbar(aes(ymin = Rt_lwr, ymax = Rt_upr, y = Rt_plot), color = "black") +
+    geom_line(aes(y = Rt_loess_fit), colour = "#3366ff", lwd = 1.5) +
+    coord_cartesian(ylim = c(0, ylim_max)) +
     geom_hline(yintercept = 1, lty = 2) +
     xlab("Date (lagged 5 days)") + ylab("") + ggtitle(rt_plt_title) +
-    ylim(0, ylim_max) + xlim(xlim_min, xlim_max) +
+    xlim(xlim_min, xlim_max) +
     theme_cowplot() +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
