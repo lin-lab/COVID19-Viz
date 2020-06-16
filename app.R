@@ -291,12 +291,14 @@ munge_for_dt <- function(df) {
     dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
                   Rt_lwr = round(Rt_lwr, 2),
                   Rt_upr = round(Rt_upr, 2),
+                  positive_percapita = round(positive_percapita, 0),
                   positiveIncr_percapita = round(positiveIncr_percapita, 2)) %>%
     dplyr::select(Location = dispID, Rt, `CI Lower` = Rt_lwr,
-                  `CI Upper` = Rt_upr, `Total Cases` = positive,
+                  `CI Upper` = Rt_upr, `Cum. Cases` = positive,
+                  `Cum. Cases per Million` = positive_percapita,
                   `New Cases` = positiveIncrease,
                   `New Cases per Million` = positiveIncr_percapita) %>%
-    dplyr::arrange(desc(Rt), desc(`Total Cases`))
+    dplyr::arrange(desc(Rt), desc(`Cum. Cases`))
   return(ret)
 }
 

@@ -71,8 +71,8 @@ lag_subset_mod <- function(dt, group_var = "UID", nlag = 5,
   dt[, positive_7day := frollmean(positiveIncrease, n = 7,
                                   align = "right", algo = "exact"),
       by = group_var]
-  dt[, positive_percapita := 1e4 * positive/ population]
-  dt[, death_percapita := 1e4 * death / population]
+  dt[, positive_percapita := 1e6 * positive/ population]
+  dt[, death_percapita := 1e6 * death / population]
   dt[, positiveIncr_percapita := 1e6 * positiveIncrease / population]
   dt[, deathIncr_percapita := 1e6 * deathIncrease / population]
 
