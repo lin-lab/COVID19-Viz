@@ -292,12 +292,20 @@ munge_for_dt <- function(df) {
                   Rt_lwr = round(Rt_lwr, 2),
                   Rt_upr = round(Rt_upr, 2),
                   positive_percapita = round(positive_percapita, 0),
-                  positiveIncr_percapita = round(positiveIncr_percapita, 2)) %>%
-    dplyr::select(Location = dispID, Rt, `CI Lower` = Rt_lwr,
-                  `CI Upper` = Rt_upr, `Cum. Cases` = positive,
-                  `Cum. Cases per Million` = positive_percapita,
+                  positiveIncr_percapita = round(positiveIncr_percapita, 2),
+                  death_percapita = round(death_percapita, 0),
+                  deathIncr_percapita = round(deathIncr_percapita, 2)) %>%
+    dplyr::select(Location = dispID, Rt,
+                  `CI Lower` = Rt_lwr,
+                  `CI Upper` = Rt_upr,
                   `New Cases` = positiveIncrease,
-                  `New Cases per Million` = positiveIncr_percapita) %>%
+                  `New Cases per Million` = positiveIncr_percapita,
+                  `Cum. Cases` = positive,
+                  `Cum. Cases per Million` = positive_percapita,
+                  `New Deaths` = deathIncrease,
+                  `New Deaths per Million` = deathIncr_percapita,
+                  `Cum. Deaths` = death,
+                  `Cum. Deaths per Million` = death_percapita) %>%
     dplyr::arrange(desc(Rt), desc(`Cum. Cases`))
   return(ret)
 }
@@ -500,9 +508,11 @@ server <- function(input, output, session) {
   }, cacheKeyExpr = { input$RtMap_shape_click$id })
 
   output$Rt_table_title <- renderText({
-    date_select <- format(input$RtDate, "%Y-%m-%d")
-    req(date_select)
-    sprintf("Table of Rt for %s", date_select)
+    date_lag <- format(input$RtDate, "%Y-%m-%d")
+    date_actual <- format(input$RtDate + 5, "%Y-%m-%d")
+    req(date_lag)
+    sprintf("Table of metrics for %s. Rt calculated for %s (5-day lag).",
+            date_actual, date_lag)
   })
 
   # Table of current Rts at current resolution
@@ -711,10 +721,11 @@ server <- function(input, output, session) {
   output$Rt_table_explore_states_title <- renderText({
     req(input$state_select_date)
     req(input$state_select)
-    date_select <- format(input$state_select_date, "%Y-%m-%d")
+    date_lag <- format(input$state_select_date, "%Y-%m-%d")
+    date_actual <- format(input$state_select_date + 5, "%Y-%m-%d")
     state_uid <- input$state_select
-    sprintf("Table of Rt values on %s for %s", date_select,
-            state_uid_to_place[[state_uid]])
+    sprintf("Table of metrics on %s for %s. Rt calculated for %s (5-day lag).",
+            date_actual, state_uid_to_place[[state_uid]], date_lag)
   })
 
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
