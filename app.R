@@ -276,6 +276,7 @@ click_plot <- function(plt_dat) {
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
     xlim(xlim_min, xlim_max) +
+    coord_cartesian(ylim = c(0, NA)) +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
@@ -286,6 +287,7 @@ click_plot <- function(plt_dat) {
   return(final_plt)
 }
 
+#' Preprocess data frame to be displayed by DT.
 munge_for_dt <- function(df) {
   ret <- df %>%
     dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
@@ -309,6 +311,9 @@ munge_for_dt <- function(df) {
     dplyr::arrange(desc(Rt), desc(`Cum. Cases`))
   return(ret)
 }
+
+#' Draw forest plot of current Rt and confidence interval
+
 
 ########################################################################
 ## Define UI
@@ -579,6 +584,7 @@ server <- function(input, output, session) {
         scale_color_discrete(name = "Location") +
         scale_fill_discrete(name = "Location") +
         theme_cowplot() +
+        coord_cartesian(ylim = c(0, NA)) +
         theme(text = element_text(size = 18),
               axis.text = element_text(size = 15))
 
@@ -590,6 +596,7 @@ server <- function(input, output, session) {
         scale_color_discrete(name = "Location") +
         scale_fill_discrete(name = "Location") +
         theme_cowplot() +
+        coord_cartesian(ylim = c(0, NA)) +
         theme(text = element_text(size = 18),
               axis.text = element_text(size = 15))
 
