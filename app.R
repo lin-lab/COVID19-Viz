@@ -313,6 +313,36 @@ munge_for_dt <- function(df) {
 }
 
 #' Draw forest plot of current Rt and confidence interval
+forest_plot <- function(df, resolution, date_lag) {
+  tmp <- df %>%
+    dplyr::filter(Rt_plot > 0) %>%
+    dplyr::arrange(Rt_plot)
+
+  if (resolution == "county" || startsWith(resolution, "state_")) {
+    plt_dat <- tmp %>%
+      dplyr::mutate(dispID_new = sub(", [A-Za-z]+", "", dispID),
+                    dispID_ord = factor(dispID_new, levels = dispID_new))
+  } else {
+    plt_dat <- tmp %>%
+      dplyr::mutate(dispID_ord = factor(dispID, levels = dispID))
+  }
+
+  if (nrow(plt_dat) == 0) {
+    p <- ggplot() +
+      ggtitle("Insufficient data")
+  } else {
+    title_str <- sprintf("Rt on %s", date_lag)
+    p <- ggplot(plt_dat,
+          aes(x = Rt_plot, y = dispID_ord, xmin = Rt_lwr, xmax = Rt_upr)) +
+      geom_point() + geom_errorbarh() +
+      geom_vline(xintercept = 1, lty = 2) +
+      xlab("Rt and 95% CI") + ylab("") +
+      ggtitle(title_str) +
+      theme_cowplot() +
+      theme(axis.text.y = element_text(size = 16))
+  }
+  return(p)
+}
 
 
 ########################################################################
@@ -380,7 +410,31 @@ ui <- fluidPage(
         )
       ) # end of sideBarLayout
     ), # end of tabPanel
-    # Third tab: explore states
+    # 3rd tab: Forest plot of Rts
+    tabPanel("Forest Plot",
+      sidebarLayout(
+        sidebarPanel(
+          h4("Display a forest plot of Rt for a given resolution"),
+          p("Use slider to adjust date."),
+          p("Note the Rt is lagged by 5 days."),
+          sliderInput("forestPlot_date", label = "Date",
+                      min = min_date, max = max_date,
+                      value = max_date),
+          selectInput("forestPlot_resolution", "Resolution:",
+                      choices = list("World" = "country",
+                                     "US States" = "state_USA",
+                                     "Canadian Provinces" = "state_Canada",
+                                     "Australian Provinces" = "state_Australia",
+                                     "Chinese Provinces" = "state_China"))
+        ), # end of sidebarPanel
+        mainPanel(
+          # Need UI output to dynamically set the size of the plots.
+          uiOutput("RtForestPlot_ui"),
+          p("Some locations might not be shown because of insufficient data.")
+        ) # end of mainPanel
+      ) # end of sidebarLayout
+    ),
+    # 4th tab: explore states
     tabPanel("Explore States",
       # controls at the top
       fluidRow(
@@ -408,15 +462,18 @@ ui <- fluidPage(
         )
       ),
       fluidRow(
-        column(5, align = "center",
+        column(6, align = "center",
           plotOutput("RtOverTime_exploreState", height = "500px")
         ),
-        column(7, align = "left",
-          h4(textOutput("Rt_table_explore_states_title")),
-          DT::DTOutput("Rt_table_explore_states"),
-          br(),
-          includeMarkdown("assets/Rt_table_footer.md")
+        column(6, align = "center",
+          plotOutput("RtForestPlot_exploreState", height = "500px")
         )
+      ),
+      fluidRow(
+        h4(textOutput("Rt_table_explore_states_title")),
+        DT::DTOutput("Rt_table_explore_states"),
+        br(),
+        includeMarkdown("assets/Rt_table_footer.md")
       )
     ), # end of tabPanel
     # Fourth tab: About page
@@ -436,6 +493,10 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   cdata <- session$clientData
+
+  ########################################################################
+  ## 1st tab: Big Rt Map
+  ########################################################################
 
   # The basic big Rt map
   output$RtMap <- renderLeaflet({
@@ -535,6 +596,12 @@ server <- function(input, output, session) {
     ret_df
   }, server = FALSE, options = list(pageLength = 25))
 
+
+
+  ########################################################################
+  ## 2nd tab: Compare Rt
+  ########################################################################
+
   # get data to plot for Rt comparison
   plt_dat_compare <- eventReactive(input$compare_submit, {
     # get all the UIDs in a data frame and join them with rt long to select
@@ -605,6 +672,39 @@ server <- function(input, output, session) {
       plt_out
     })
   })
+
+  ########################################################################
+  ## 3rd tab: Rt Forest plot
+  ########################################################################
+
+  output$RtForestPlot <- renderCachedPlot({
+    validate(need(input$forestPlot_date, "Please select a date."))
+    validate(need(input$forestPlot_resolution, "Please select a resolution."))
+    date_select <- format(input$forestPlot_date, "%Y-%m-%d")
+
+    p <- rt_long_all %>%
+      dplyr::filter(resolution == input$forestPlot_resolution,
+                    date_lag == date_select) %>%
+      forest_plot(input$forestPlot_resolution, date_select)
+    p
+  }, cacheKeyExpr = { c(input$forestPlot_date, input$forestPlot_resolution) })
+
+  output$RtForestPlot_ui <- renderUI({
+    validate(need(input$forestPlot_date, "Please select a date."))
+    validate(need(input$forestPlot_resolution, "Please select a resolution."))
+    plt_height <-
+      switch(input$forestPlot_resolution,
+             country = "1800px",
+             state_USA = "900px",
+             state_Canada = "300px",
+             state_Australia = "300px",
+             state_China = "300px")
+    plotOutput("RtForestPlot", height = plt_height)
+  })
+
+  ########################################################################
+  ## 4th tab: Explore states tab
+  ########################################################################
 
   # change map polygons when state or date changes
   prev_grpid_state_reactive <- reactiveValues(val = "")
@@ -707,7 +807,7 @@ server <- function(input, output, session) {
   # render table of county Rts at current date
   output$Rt_table_explore_states <- DT::renderDT({
     validate(need(input$state_select, message = "Please select a state."))
-    validate(need(input$state_select_date, message = "Please select a state."))
+    validate(need(input$state_select_date, message = "Please select a date."))
     date_select <- format(input$state_select_date, "%Y-%m-%d")
     county_rt_long_update() %>%
       dplyr::filter(date_lag == date_select) %>%
@@ -723,6 +823,15 @@ server <- function(input, output, session) {
       suppressWarnings(click_plot(plt_dat))
     }
   }, cacheKeyExpr = { input$explore_states_out_shape_click$id })
+
+  output$RtForestPlot_exploreState <- renderCachedPlot({
+    validate(need(input$state_select, message = "Please select a state."))
+    validate(need(input$state_select_date, message = "Please select a date."))
+    date_select <- format(input$state_select_date, "%Y-%m-%d")
+    county_rt_long_update() %>%
+      dplyr::filter(date_lag == date_select) %>%
+      forest_plot(resolution = "county", date_lag = date_select)
+  }, cacheKeyExpr = { c(input$state_select, input$state_select_date) })
 
 
   output$Rt_table_explore_states_title <- renderText({
