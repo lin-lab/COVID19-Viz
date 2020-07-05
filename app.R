@@ -314,13 +314,22 @@ munge_for_dt <- function(df) {
 
 #' Draw forest plot of current Rt and confidence interval
 forest_plot <- function(df, resolution, date_lag) {
+  bins_pos <- bins[-c(1, 2)]
+  color_labels_pos <- color_labels[-c(1, 2)]
   tmp <- df %>%
     dplyr::filter(Rt_plot > 0) %>%
-    dplyr::arrange(Rt_plot)
+    dplyr::arrange(Rt_plot) %>%
+    dplyr::mutate(`Rt Range` = cut(Rt_plot, breaks = bins_pos,
+                                  labels = color_labels_pos,
+                                  include.lowest = TRUE, right = FALSE))
+  # configure colors for Rt bins
+  color_pal <- colors_default[-c(1, 2)]
+  names(color_pal) <- levels(tmp$`Rt Range`)
 
+  # change e.g. Texas, USA -> Texas; Kings, New York -> Kings
   if (resolution == "county" || startsWith(resolution, "state_")) {
     plt_dat <- tmp %>%
-      dplyr::mutate(dispID_new = sub(", [A-Za-z]+", "", dispID),
+      dplyr::mutate(dispID_new = sub(", [A-Za-z ]+", "", dispID),
                     dispID_ord = factor(dispID_new, levels = dispID_new))
   } else {
     plt_dat <- tmp %>%
@@ -329,17 +338,35 @@ forest_plot <- function(df, resolution, date_lag) {
 
   if (nrow(plt_dat) == 0) {
     p <- ggplot() +
-      ggtitle("Insufficient data")
+      ggtitle("Insufficient data") +
+      theme_dark() +
+      theme(axis.text.y = element_text(size = 16),
+            axis.text.x = element_text(size = 16),
+            axis.title = element_text(size = 20),
+            legend.title = element_text(size = 18),
+            legend.text = element_text(size = 16),
+            plot.title = element_text(size = 24),
+            panel.grid.major.x = element_blank(),
+            panel.grid.minor.x = element_blank())
   } else {
     title_str <- sprintf("Rt on %s", date_lag)
     p <- ggplot(plt_dat,
-          aes(x = Rt_plot, y = dispID_ord, xmin = Rt_lwr, xmax = Rt_upr)) +
-      geom_point() + geom_errorbarh() +
-      geom_vline(xintercept = 1, lty = 2) +
+          aes(x = Rt_plot, y = dispID_ord, xmin = Rt_lwr, xmax = Rt_upr,
+              color = `Rt Range`)) +
+      geom_point(size = 3) + geom_errorbarh(size = 2) +
+      scale_color_manual(drop = FALSE, values = color_pal) +
+      geom_vline(xintercept = 1, lty = 2, color = "white", lwd = 1.5) +
       xlab("Rt and 95% CI") + ylab("") +
       ggtitle(title_str) +
-      theme_cowplot() +
-      theme(axis.text.y = element_text(size = 16))
+      theme_dark() +
+      theme(axis.text.y = element_text(size = 16),
+            axis.text.x = element_text(size = 16),
+            axis.title = element_text(size = 20),
+            legend.title = element_text(size = 18),
+            legend.text = element_text(size = 16),
+            plot.title = element_text(size = 24),
+            panel.grid.major.x = element_blank(),
+            panel.grid.minor.x = element_blank())
   }
   return(p)
 }
@@ -780,19 +807,20 @@ server <- function(input, output, session) {
     validate(need(input$state_select, message = "Please select a state."))
     plt_data_pruned <- county_rt_long_update() %>%
       dplyr::filter(Rt_plot > 0) %>%
-      dplyr::mutate(`Rt Bins` = cut(Rt_plot, breaks = bins,
+      dplyr::mutate(`Rt Range` = cut(Rt_plot, breaks = bins,
                                     labels = color_labels, include.lowest = TRUE,
-                                    right = FALSE)) %>%
-      dplyr::mutate(County = factor(dispID)) %>%
+                                    right = FALSE),
+                    dispID_new = sub(", [A-Za-z ]+", "", dispID),
+                    County = factor(dispID_new)) %>%
       dplyr::rename(Rt = Rt_plot)
     color_pal <- colors_default
-    names(color_pal) <- levels(plt_data_pruned$`Rt Bins`)
+    names(color_pal) <- levels(plt_data_pruned$`Rt Range`)
 
     plt_title <- sprintf("Rt for %s Counties Over Time",
                          state_uid_to_place[[input$state_select]])
     if (nrow(plt_data_pruned) > 0) {
       p <- plt_data_pruned %>%
-        ggplot(aes(x = date, y = County, fill = `Rt Bins`, labels = Rt)) +
+        ggplot(aes(x = date, y = County, fill = `Rt Range`, labels = Rt)) +
         geom_tile(alpha = 0.7) +
         scale_fill_manual(drop = FALSE, values = color_pal) +
         xlab("Date (lagged 5 days)") + ylab("County") + ggtitle(plt_title) +
