@@ -575,14 +575,15 @@ stopifnot(nrow(rep_names) == 0)
 
 get_lnglat <- function(geometry, UID) {
   bbox <- st_bbox(geometry)
-  lng <- mean(c(bbox["xmin"], bbox["xmax"]))
+  # do a weighted mean because we want the legend on the right side
+  lng <- weighted.mean(c(bbox["xmin"], bbox["xmax"]), c(0.25, 0.75))
   lat <- mean(c(bbox["ymin"], bbox["ymax"]))
   if (UID == "84000002") {
     # Alaska
     lng <- -147
   } else if (UID == "84000015") {
     # Hawaii
-    lng <- -157.65
+    lng <- -154.65
     lat <- 20.09
   }
   return(c(lng, lat))

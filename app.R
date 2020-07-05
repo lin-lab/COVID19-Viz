@@ -380,6 +380,11 @@ ui <- fluidPage(
   tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
   tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
   tags$head(includeHTML("assets/google-analytics.html")),
+  tags$head(tags$style(
+      ".leaflet .legend {width:200px; text-align: left;}",
+      ".leaflet .legend i{float: left;}",
+      ".leaflet .legend label{float:left; text-align: left;}"
+  )),
   titlePanel("Visualizing COVID-19's Effective Reproduction Number (Rt)"),
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
@@ -481,16 +486,18 @@ ui <- fluidPage(
       ),
       # output at the bottom
       fluidRow(
+        # These guys can have fixed height
         column(6, align = "center",
-          plotOutput("explore_states_counties", height = "500px")
+          plotOutput("RtOverTime_exploreState", height = "500px")
         ),
         column(6, align = "center",
           leafletOutput("explore_states_out", height = "500px")
         )
       ),
       fluidRow(
+        # TODO: dyamically scale height depending on number of counties
         column(6, align = "center",
-          plotOutput("RtOverTime_exploreState", height = "500px")
+          plotOutput("explore_states_counties", height = "500px")
         ),
         column(6, align = "center",
           plotOutput("RtForestPlot_exploreState", height = "500px")
@@ -752,7 +759,9 @@ server <- function(input, output, session) {
                          options = providerTileOptions(minZoom = 3)) %>%
         setView(-71.72, 42.06, 7) %>%
         setMaxBounds(-180, -90, 180, 90) %>%
-        addPolygon_Point(counties_sf, labels_final, cur_grpid)
+        addPolygon_Point(counties_sf, labels_final, cur_grpid) %>%
+        addLegend(colors = colors_default, labels = color_labels,
+                  opacity = 0.7, title = "Rt", position = "bottomright")
     )
     prev_grpid_state_reactive$val <- cur_grpid
     map_default
@@ -807,13 +816,13 @@ server <- function(input, output, session) {
     validate(need(input$state_select, message = "Please select a state."))
     plt_data_pruned <- county_rt_long_update() %>%
       dplyr::filter(Rt_plot > 0) %>%
-      dplyr::mutate(`Rt Range` = cut(Rt_plot, breaks = bins,
-                                    labels = color_labels, include.lowest = TRUE,
-                                    right = FALSE),
+      dplyr::mutate(`Rt Range` = cut(Rt_plot, breaks = bins[-c(1, 2)],
+                                    labels = color_labels[-c(1, 2)],
+                                    include.lowest = TRUE, right = FALSE),
                     dispID_new = sub(", [A-Za-z ]+", "", dispID),
                     County = factor(dispID_new)) %>%
       dplyr::rename(Rt = Rt_plot)
-    color_pal <- colors_default
+    color_pal <- colors_default[-c(1, 2)]
     names(color_pal) <- levels(plt_data_pruned$`Rt Range`)
 
     plt_title <- sprintf("Rt for %s Counties Over Time",
@@ -821,13 +830,17 @@ server <- function(input, output, session) {
     if (nrow(plt_data_pruned) > 0) {
       p <- plt_data_pruned %>%
         ggplot(aes(x = date, y = County, fill = `Rt Range`, labels = Rt)) +
-        geom_tile(alpha = 0.7) +
+        geom_tile() +
         scale_fill_manual(drop = FALSE, values = color_pal) +
         xlab("Date (lagged 5 days)") + ylab("County") + ggtitle(plt_title) +
-        theme_cowplot() +
+        theme_dark() +
         scale_y_discrete(limits = rev(levels(plt_data_pruned$County))) +
-        theme(axis.text.y = element_text(size = 14),
-              legend.text = element_text(size = 16))
+        theme(axis.text.y = element_text(size = 16),
+              axis.text.x = element_text(size = 16),
+              axis.title = element_text(size = 20),
+              legend.title = element_text(size = 18),
+              legend.text = element_text(size = 16),
+              plot.title = element_text(size = 24))
     } else {
       # draw empty plot
       p <- ggplot()
