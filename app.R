@@ -863,7 +863,7 @@ server <- function(input, output, session) {
 
   output$RtOverTime_exploreState <- renderCachedPlot({
     validate(need(input$explore_states_out_shape_click,
-                  message = "Click on a location to show Rt and new cases over time."))
+                  message = "Click on a county to show Rt and new cases over time."))
     click <- input$explore_states_out_shape_click
     plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
     if (nrow(plt_dat) > 0) {
