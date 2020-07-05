@@ -594,7 +594,10 @@ server <- function(input, output, session) {
       munge_for_dt()
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
-  }, server = FALSE, options = list(pageLength = 25))
+  }, server = FALSE, options = list(pageLength = 25), rownames = TRUE,
+     callback = JS("table.on( 'order.dt search.dt', function () {
+                                table.column(0, {search:'applied', order:'applied'}).nodes().each( function (cell, i) {
+                                      cell.innerHTML = i+1;});}).draw();"))
 
 
 
@@ -812,7 +815,10 @@ server <- function(input, output, session) {
     county_rt_long_update() %>%
       dplyr::filter(date_lag == date_select) %>%
       munge_for_dt()
-  }, server = FALSE)
+  }, server = FALSE, rownames = TRUE,
+     callback = JS("table.on( 'order.dt search.dt', function () {
+                                table.column(0, {search:'applied', order:'applied'}).nodes().each( function (cell, i) {
+                                      cell.innerHTML = i+1;});}).draw();"))
 
   output$RtOverTime_exploreState <- renderCachedPlot({
     validate(need(input$explore_states_out_shape_click,
