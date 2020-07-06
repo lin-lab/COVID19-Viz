@@ -44,14 +44,14 @@ names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
 ########################################################################
 
 # bins and colors for the map
-bins <- c(-Inf, -100, 0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2, 5, Inf)
+bins <- c(-Inf, -100, 0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
 rt_range <- range(rt_long_all$Rt_plot, na.rm = TRUE)
-colors_default = c("#696969", "#9e9e9e", "#4575b4", "#74add1", "#abd9e9",
-                   "#e0f3f8", "#ffffbf", "#fee090", "#fdae61", "#f46d43",
-                   "#d73027")
-color_labels <- c("Insufficient total cases", "Insufficient new cases", "0.00 - 0.25",
-                  "0.25 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
-                  "1.25 - 1.50", "1.50 - 2.00", "2 - 5", ">5")
+colors_default <- c("#696969", "#9e9e9e",
+                    rev(c('#d73027','#fc8d59','#fee090','#ffffbf','#e0f3f8',
+                          '#91bfdb','#4575b4')))
+color_labels <- c("Insufficient total cases", "Insufficient new cases",
+                  "0.00 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
+                  "1.25 - 1.50", "1.50 - 2.00", "2+")
 pal_default <- purrr::partial(colorBin, palette = colors_default, bins = bins)
 
 # set up defaults for adding stuff to leaflet maps
@@ -80,6 +80,12 @@ addCircles_default <-
 dates <- unique(rt_long_all$date_lag)
 min_date <- min(dates)
 max_date <- max(dates)
+
+# This javascript callback re-numbers DT::datatables rows after sorting.
+# Source: https://stackoverflow.com/questions/35502931/automatic-row-numbers-after-filtering-dt-in-shiny
+dt_js_callback = JS("table.on( 'order.dt search.dt', function () {
+                                table.column(0, {search:'applied', order:'applied'}).nodes().each( function (cell, i) {
+                                      cell.innerHTML = i+1;});}).draw();")
 
 ########################################################################
 ## Define helper functions
@@ -628,10 +634,7 @@ server <- function(input, output, session) {
       munge_for_dt()
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
-  }, server = FALSE, options = list(pageLength = 25), rownames = TRUE,
-     callback = JS("table.on( 'order.dt search.dt', function () {
-                                table.column(0, {search:'applied', order:'applied'}).nodes().each( function (cell, i) {
-                                      cell.innerHTML = i+1;});}).draw();"))
+  }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
 
 
 
@@ -856,10 +859,7 @@ server <- function(input, output, session) {
     county_rt_long_update() %>%
       dplyr::filter(date_lag == date_select) %>%
       munge_for_dt()
-  }, server = FALSE, rownames = TRUE,
-     callback = JS("table.on( 'order.dt search.dt', function () {
-                                table.column(0, {search:'applied', order:'applied'}).nodes().each( function (cell, i) {
-                                      cell.innerHTML = i+1;});}).draw();"))
+  }, server = FALSE, rownames = TRUE, callback = dt_js_callback)
 
   output$RtOverTime_exploreState <- renderCachedPlot({
     validate(need(input$explore_states_out_shape_click,
