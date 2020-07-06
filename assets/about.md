@@ -4,13 +4,13 @@
 **Rt map tab**: This tab shows a map of the Rt by date for various resolutions.
 Change the date by adjusting the slider. Change the resolution (Country, US
 states, US counties, Canadian/Chinese/Australian provinces) using the resolution
-dropdown menu, and click on a location to see a line graph of the Rt over time.
-You can scroll to change the zoom of the map and click-drag to move the map
-around. Below the map, there is a table of Rts for the chosen date and
-resolution. This table is by default sorted in descending order of Rt, but the
-sorting can be changed by clicking a column header. Locations where Rt could not
-be calculated are colored gray in the map and not shown in the table (see
-Limitations section for more info).
+dropdown menu, and click on a location to see a line graph of the Rt over time
+and of the number of daily new cases over time. You can scroll to change the
+zoom of the map and click-drag to move the map around. Below the map, there is a
+table of Rts for the chosen date and resolution. This table is by default sorted
+in descending order of Rt, but the sorting can be changed by clicking a column
+header. Locations where Rt could not be calculated are colored gray in the map
+and not shown in the table (see Limitations section for more info).
 
 Technical note: the blue line is a fitted loess curve to the Rt points, and the
 error bars show the 95% posterior interval of Rt for that time point.
@@ -23,13 +23,23 @@ click submit, the results will be displayed as a line plot. Some areas may not
 appear in the plot because of insufficient data (see Rt Method Description for
 more info).
 
+**Forest Plot tab**: This tab shows a forest plot of all the Rt values in a
+given region on a given day. The estimated value of Rt is shown as a point, and
+the error bars give a 95% credible interval. Change the resolution (Country, US
+states, US counties, Canadian/Chinese/Australian provinces) using the resolution
+dropdown menu. Locations where Rt could not be calculated are not shown (see
+Limitations section for more info).
+
 **Explore States tab**: This tab shows an overview for all the counties in a
-selected state. The plot on the left shows the change in Rt over time for
-counties where Rt was able to be calculated. The map on the right shows the Rt
-for the counties in the state for a selected date. The date can be adjusted
-using the slider, and an animation can be shown by clicking the blue “play”
-button. You can zoom in and out by scrolling and you can move the map by
-clicking and dragging. Below the map, there is a table of Rt for the date
+selected state. The map on the top right shows the Rt for the counties in the
+state for a selected date. Clicking a county will generate a plot of Rt and
+number of daily new cases over time on the top left. The plot on the second row
+on the left left shows the change in Rt over time for counties where Rt was able
+to be calculated, and the plot on the right shows the same forest plot as in the
+previous section except for the counties in the selected state. The date can be
+adjusted using the slider, and an animation can be shown by clicking the blue
+“play” button. You can zoom in and out by scrolling and you can move the map by
+clicking and dragging. Below the plots, there is a table of Rt for the date
 selected using the slider. This table is by default sorted in descending order
 of Rt, but the sorting can be changed by clicking a column header.
 
