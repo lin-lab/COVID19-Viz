@@ -502,15 +502,7 @@ ui <- fluidPage(
           leafletOutput("explore_states_out", height = "500px")
         )
       ),
-      fluidRow(
-        # TODO: dyamically scale height depending on number of counties
-        column(6, align = "center",
-          plotOutput("explore_states_counties", height = "500px")
-        ),
-        column(6, align = "center",
-          plotOutput("RtForestPlot_exploreState", height = "500px")
-        )
-      ),
+      uiOutput("explorestate_row2_ui"),
       fluidRow(
         h4(textOutput("Rt_table_explore_states_title")),
         DT::DTOutput("Rt_table_explore_states"),
@@ -815,6 +807,18 @@ server <- function(input, output, session) {
     map_state
   })
 
+  # Render plot of Rt over time on click
+  output$RtOverTime_exploreState <- renderCachedPlot({
+    validate(need(input$explore_states_out_shape_click,
+                  message = "Click on a county to show Rt and new cases over time."))
+    click <- input$explore_states_out_shape_click
+    plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
+    if (nrow(plt_dat) > 0) {
+      suppressWarnings(click_plot(plt_dat))
+    }
+  }, cacheKeyExpr = { input$explore_states_out_shape_click$id })
+
+
   # update county_rt_long data frame
   county_rt_long_update <- reactive({
     validate(need(input$state_select, message = "Please select a state."))
@@ -823,6 +827,27 @@ server <- function(input, output, session) {
       dplyr::filter((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
                     UID %in% county_uids$extra_uids)
   })
+
+  num_counties <- reactive({
+    df_with_rts <- county_rt_long_update() %>%
+      filter(Rt_plot > 0)
+    length(unique(df_with_rts$UID))
+  })
+
+  output$explorestate_row2_ui <- renderUI({
+    validate(need(input$state_select, message = "Please select a state."))
+    row_height <- 200 + 20 * num_counties()
+    fluidRow(
+      column(6, align = "center",
+        plotOutput("explore_states_counties", height = row_height)
+      ),
+      column(6, align = "center",
+        plotOutput("RtForestPlot_exploreState", height = row_height)
+      )
+    )
+
+  })
+
 
   # render heatmap of counties over time
   output$explore_states_counties <- renderCachedPlot({
@@ -863,26 +888,7 @@ server <- function(input, output, session) {
     p
   }, cacheKeyExpr = { input$state_select })
 
-  # render table of county Rts at current date
-  output$Rt_table_explore_states <- DT::renderDT({
-    validate(need(input$state_select, message = "Please select a state."))
-    validate(need(input$state_select_date, message = "Please select a date."))
-    date_select <- format(input$state_select_date, "%Y-%m-%d")
-    county_rt_long_update() %>%
-      dplyr::filter(date_lag == date_select) %>%
-      munge_for_dt()
-  }, server = FALSE, rownames = TRUE, callback = dt_js_callback)
-
-  output$RtOverTime_exploreState <- renderCachedPlot({
-    validate(need(input$explore_states_out_shape_click,
-                  message = "Click on a county to show Rt and new cases over time."))
-    click <- input$explore_states_out_shape_click
-    plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
-    if (nrow(plt_dat) > 0) {
-      suppressWarnings(click_plot(plt_dat))
-    }
-  }, cacheKeyExpr = { input$explore_states_out_shape_click$id })
-
+  # render forest plot of Rts on selected date.
   output$RtForestPlot_exploreState <- renderCachedPlot({
     validate(need(input$state_select, message = "Please select a state."))
     validate(need(input$state_select_date, message = "Please select a date."))
@@ -893,6 +899,17 @@ server <- function(input, output, session) {
   }, cacheKeyExpr = { c(input$state_select, input$state_select_date) })
 
 
+  # render table of county Rts at current date
+  output$Rt_table_explore_states <- DT::renderDT({
+    validate(need(input$state_select, message = "Please select a state."))
+    validate(need(input$state_select_date, message = "Please select a date."))
+    date_select <- format(input$state_select_date, "%Y-%m-%d")
+    county_rt_long_update() %>%
+      dplyr::filter(date_lag == date_select) %>%
+      munge_for_dt()
+  }, server = FALSE, rownames = TRUE, callback = dt_js_callback)
+
+  # title for county Rt tables
   output$Rt_table_explore_states_title <- renderText({
     req(input$state_select_date)
     req(input$state_select)
