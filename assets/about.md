@@ -104,7 +104,7 @@ the JHU dataset. We also state/province level daily Rt estimates for the USA,
 Australia, Canada, and China, as well as county-level daily Rt estimates for the
 US.
 
-### Rt Lag Adjustment
+## Rt Lag Adjustment
 
 Because the number of reported cases on a particular day does not represent the
 number of people who contracted COVID-19, the Rt curve needs to be adjusted to
@@ -113,17 +113,15 @@ counted. As a heuristic, we assume that there is a 5-day lag from the time a
 person contracts COVID-19 until they are reported as a case, so we shift the Rt
 curve back 5 days to reflect this.
 
-### Limitations
+
+## Limitations
 
 Rt estimation becomes unstable when there are only a few new cases per day or
-when the total number of cases is small. We calculate Rt at the county level for
-the US, and counties can have populations from the thousands to the millions.
-Because of low population size or lack of reporting, many counties in the US as
-well as many countries with underdeveloped healthcare infrastructure may not
-have many cases. Therefore, we do not show the Rt value on dates when the number
-of total cases is below 50 or when the average number of new cases within the
-previous 7 days is below 10. We also provide Rt at different resolutions so we
-can aggregate data from areas with few cases.
+when the total number of cases is small. Because of low population size or lack
+of reporting, this is the case for many rural counties in the US as well as many
+countries with underdeveloped healthcare infrastructure. Therefore, we do not
+show the Rt value on dates when the number of total cases is below 50 or when
+the average number of new cases within the previous 7 days is below 10.
 
 Furthermore, our calculation of Rt is dependent on the number of reported daily
 new cases. We use the number of reported cases as a proxy measure for the number
@@ -134,73 +132,6 @@ authorities may report cases from several days on the same day; for example,
 they may not report many cases on weekends but report many on Mondays.
 Therefore, we need to be cautious about interpreting the Rt for any particular
 region and time and take into account how reliable the case numbers are.
-
-## Rt Interpretation and Using Rt to Guide Reopening
-
-Rt should be used as one of several metrics, along with case rate and death
-rate, to consider when making reopening decisions. Specifically, Rt measures the
-transmission rate, i.e, how rapid the spread is on a given day. It is thus a
-relative measure on the multiplicative scale. Absolute measures such as the
-number of new cases per day or daily case rate should also be considered. For
-example, we can consider Montana and Texas on 6/28 and New York on 5/11. Because
-Rt is lagged from the daily case data by 5 days (see about tab for more info),
-we will use the number of cases from 7/3 and 5/16, respectively.
-
-+ Montana: Rt of 1.58, 95% CI (1.4 - 1.77), 67 new cases on 7/3.
-+ Texas: Rt of 1.25, 95% CI (1.23 - 1.26), 6769 new cases on 7/3.
-+ New York: Rt of 0.77, 95% CI (0.76 - 0.78), 2419 new cases on 5/16.
-
-Montana has the highest Rt but doesn't have that many new cases. That's because
-on previous days it had 40-50 cases, so having 67 new cases represents a big
-jump, relative to 40-50.
-
-Texas has Rt above 1, which means the disease is spreading. It has a lower Rt
-compared to Montana but still has a substantial number of new cases. This means
-that the pandemic is spreading less quickly in Texas than in Montana but it
-would not be right to say that Texas is doing "better" than Montana, as there
-are a much larger number of newly infected people in Texas given its much higher
-case base. Hence the epidemic in Texas is much more severe than Montana.
-
-For New York on 5/11, the Rt was low and below 1. This means that the number of
-daily cases decreased. But on that day New York had the highest number of new
-cases out of all 50 states. This means the interventions being put into place
-were reducing the spread of the disease, but the number of newly infected
-subjects was still large given NY had a larger base to start with.
-
-In summary, one needs to look at both relative measures such as Rt and absolute
-measures such as the number of new cases per day or daily case rate. Rt can tell
-us where the trajectory of the disease is heading while the number of new cases
-per day can tell us the size of the infected population, the number of lives the
-disease has infected, and the number of people who may need medical attention or
-need to be isolated. In addition, other metrics such as number of deaths, the
-number of hospitalizations, hospital capacity, and adherence to mask wearing and
-social distancing should be considered as well to evaluate health care capacity
-and evaluate the extent of the implementation of intervention measures.
-
-It is not safe to fully reopen with no restrictions when the number of cases is
-still large even when Rt is below 1, because those large number of cases could
-go on to infect others. When Rt is sufficiently below 1 and the number of new
-cases is sufficiently small for two weeks, reopening still needs to proceed with
-measures in place such as mask wearing, social distancing, and
-test-trace-isolate. Reopening should be done in phases with close monitoring to
-ensure there is not a spike in the number of cases.
-
-
-## In the News
-
-+ Our website was mentioned in a [Nature News
-  Feature](https://www.nature.com/articles/d41586-020-02009-w). Key quote:
-
->The Harvard site produces numbers for US counties---which can range from
->thousands to millions of inhabitants---but one of its creators, Xihong Lin,
->says that hyperlocal data come with big uncertainties. The researchers don't
->calculate an Rt for a county unless there are ten cases, Lin says. And she
->stresses that policymakers should not use them in isolation, but only alongside
->other measures such as the total number of cases and whether it is increasing.
->“When making recommendations, it's definitely important to look at the whole
->picture and not just rely on Rt,” she says. Used properly, the data could help
->public-health officials to identify hot spots of infection to prioritize
->resources such as testing, she says.
 
 ## Code Availability
 
@@ -223,7 +154,6 @@ School of Public Health](https://www.hsph.harvard.edu/).
 + Website development: Andy Shi
 + Rt Calculation: Sheila Gaynor
 + Sensitivity Analysis: Xihao Li, Hui Li, Zilin Li, Derek Shyr
-+ Principal Investigator: Xihong Lin
 + Special thanks to Evan Sarmiento and the team at Harvard IQSS for help with
   hosting.
 
