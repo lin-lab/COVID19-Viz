@@ -372,7 +372,9 @@ forest_plot <- function(df, resolution, date_lag) {
             legend.text = element_text(size = 16),
             plot.title = element_text(size = 24),
             panel.grid.major.x = element_blank(),
-            panel.grid.minor.x = element_blank())
+            panel.grid.minor.x = element_blank(),
+            panel.background = element_rect(fill = '#9e9e9e',
+                                            colour = '#9e9e9e'))
   }
   return(p)
 }
@@ -843,7 +845,9 @@ server <- function(input, output, session) {
               axis.title = element_text(size = 20),
               legend.title = element_text(size = 18),
               legend.text = element_text(size = 16),
-              plot.title = element_text(size = 24))
+              plot.title = element_text(size = 24),
+              panel.background = element_rect(fill = '#9e9e9e',
+                                              colour = '#9e9e9e'))
     } else {
       # draw empty plot
       p <- ggplot()
