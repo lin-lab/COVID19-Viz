@@ -518,14 +518,6 @@ ui <- fluidPage(
         includeMarkdown("assets/Rt_table_footer.md")
       )
     ), # end of tabPanel
-    # Tab for Rt interpretation
-    tabPanel("Rt Interpretation",
-      withTags({
-        div(class = "aboutpage",
-          includeMarkdown("assets/rt-interp.md")
-        )
-      }) # end of withTags
-    ), # end of tabPanel
     # last tab: About page
     tabPanel("About",
       withTags({
