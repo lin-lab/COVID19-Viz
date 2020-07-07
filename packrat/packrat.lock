@@ -1,5 +1,5 @@
 PackratFormat: 1.4
-PackratVersion: 0.5.0
+PackratVersion: 0.5.0.26
 RVersion: 3.6.3
 Repos: CRAN=https://cloud.r-project.org
 
@@ -345,15 +345,6 @@ Package: plogr
 Source: CRAN
 Version: 0.2.0
 Hash: 81a8008a5e7858552503935f1abe48aa
-
-Package: plotly
-Source: CRAN
-Version: 4.9.2.1
-Hash: eeb9c83733cd3c9852c727b48678ce9a
-Requires: RColorBrewer, base64enc, crosstalk, data.table, digest,
-    dplyr, ggplot2, hexbin, htmltools, htmlwidgets, httr, jsonlite,
-    lazyeval, magrittr, promises, purrr, rlang, scales, tibble, tidyr,
-    viridisLite
 
 Package: png
 Source: CRAN
