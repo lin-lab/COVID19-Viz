@@ -7,3 +7,5 @@
 .rds
 packrat/lib*/
 packrat/src/
+
+Session.vim
