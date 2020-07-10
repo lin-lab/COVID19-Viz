@@ -255,8 +255,12 @@ would be desirable.
 In the News
 -----------
 
-- Our website was mentioned in a [Nature News
-    Feature](https://www.nature.com/articles/d41586-020-02009-w). Key quote:
+- [Nature News Feature](https://www.nature.com/articles/d41586-020-02009-w): A
+  Guide to R---the pandemic's misunderstood metric.
+
+<a href = "https://www.nature.com/articles/d41586-020-02009-w"><img
+src="nature_rt_article_screenshot.png" alt="Screenshot of Nature article",
+width="800"/></a>
 
 >The Harvard site produces numbers for US counties---which can range from
 >thousands to millions of inhabitants---but one of its creators, Xihong Lin,
