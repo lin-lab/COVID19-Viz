@@ -721,7 +721,7 @@ server <- function(input, output, session) {
                     date_lag == date_select) %>%
       forest_plot(input$forestPlot_resolution, date_select)
     p
-  }, cacheKeyExpr = { c(input$forestPlot_date, input$forestPlot_resolution) })
+  }, cacheKeyExpr = { list(input$forestPlot_date, input$forestPlot_resolution) })
 
   output$RtForestPlot_ui <- renderUI({
     validate(need(input$forestPlot_date, "Please select a date."))
@@ -749,12 +749,13 @@ server <- function(input, output, session) {
     counties_sf <- sf_by_date_res(max_date, "county", ma_uid)
     labels_final <- master_labeller(counties_sf, max_date)
     pal <- pal_default(domain = counties_sf$Rt)
-    cur_grpid <- digest::digest(c(max_date, ma_uid))
+    cur_grpid <- digest::digest(list(max_date, ma_uid))
+    ma_center <- state_centers$`84000025`
     suppressWarnings(
       map_default <- leaflet(options = list(worldCopyJump = FALSE)) %>%
         addProviderTiles(providers$Stamen.TonerLite,
                          options = providerTileOptions(minZoom = 3)) %>%
-        setView(-71.72, 42.06, 7) %>%
+        setView(ma_center[1], ma_center[2], 7) %>%
         setMaxBounds(-180, -90, 180, 90) %>%
         addPolygon_Point(counties_sf, labels_final, cur_grpid) %>%
         addLegend(colors = colors_default, labels = color_labels,
@@ -785,7 +786,7 @@ server <- function(input, output, session) {
                                       state_input)
     labels_final <- master_labeller(counties_sf_cur, date_select)
     pal <- pal_default(domain = counties_sf_cur$Rt)
-    cur_grpid <- digest::digest(c(date_select, state_input))
+    cur_grpid <- digest::digest(list(date_select, state_input))
     prev_grpid <- prev_grpid_state_reactive$val
     map_state <- leafletProxy("explore_states_out", data = counties_sf_cur)
     if (prev_grpid != cur_grpid) {
@@ -888,7 +889,7 @@ server <- function(input, output, session) {
     county_rt_long_update() %>%
       dplyr::filter(date_lag == date_select) %>%
       forest_plot(resolution = "county", date_lag = date_select)
-  }, cacheKeyExpr = { c(input$state_select, input$state_select_date) })
+  }, cacheKeyExpr = { list(input$state_select, input$state_select_date) })
 
 
   # render table of county Rts at current date
