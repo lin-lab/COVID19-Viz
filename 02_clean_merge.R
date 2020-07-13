@@ -29,7 +29,6 @@ reformat_data <- function(dt) {
 
 state_rt_long <- fread("raw_data/jhu_state_rt_case_death_rate.csv")
 reformat_data(state_rt_long)
-state_rt_long[, date := ymd(date)]
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
@@ -96,8 +95,9 @@ state_rt_long_export[, `:=` (Lat = NULL, Long_ = NULL, stateName = NULL)]
 county_maps <- us_counties() %>%
   mutate(UID = as.integer(paste0("840", geoid)))
 
-county_rt_long <- fread("raw_data/jhu_county_rt_case_death_rate.csv")
-county_rt_long[, date := ymd(date)]
+county_rt_long <- fread("raw_data/jhu_county_rt_case_death_rate.csv",
+                        verbose = TRUE)
+reformat_data(county_rt_long)
 
 # make combined key for county rt long
 county_rt_long[, Combined_Key := paste(county, stateName, sep = ", ")]
@@ -224,7 +224,7 @@ setnames(county_rt_long_export, old = "Combined_Key", new = "dispID")
 
 global_rt_long <- fread("raw_data/jhu_global_rt_case_death_rate.csv")
 global_rt_long[Country_Region == "Canada", ]
-global_rt_long[, date := ymd(date)]
+reformat_data(global_rt_long)
 
 # fix a typo
 global_rt_long[UID == 12406,
