@@ -4,3 +4,6 @@ source("packrat/init.R")
 
 # Needed this to render plots on my installation of R 4.0+
 options(bitmapType = "cairo")
+setHook(packageEvent("grDevices", "onLoad"),
+function(...) grDevices::X11.options(type='cairo'))
+options(device='x11')
