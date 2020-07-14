@@ -20,6 +20,10 @@ reformat_data <- function(dt) {
                   "death_lower", "death_upper")
   dt[, (scale_cols) := lapply(.SD, function(x) { x * 1e6 }),
      .SDcols = scale_cols]
+  dt[, positive_percapita := 1e6 * positive / population]
+  dt[, death_percapita := 1e6 * death / population]
+  dt[, positiveIncrease_percapita := 1e6 * positiveIncrease / population]
+  dt[, deathIncrease_percapita := 1e6 * deathIncrease / population]
 }
 
 
