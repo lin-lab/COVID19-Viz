@@ -17,6 +17,8 @@ library(cowplot)
 library(htmltools)
 library(purrr)
 library(dplyr)
+library(data.table)
+library(RColorBrewer)
 
 ########################################################################
 ## Load data files
@@ -28,6 +30,7 @@ sf_all <- readRDS("clean_data/sf_all.rds")
 
 # long data frame of Rts
 rt_long_all <- readRDS("clean_data/rt_long_all.rds")
+setkey(rt_long_all, UID)
 
 # choices for each place
 place_choices <- readRDS("clean_data/names_list.rds")
@@ -44,15 +47,31 @@ names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
 ########################################################################
 
 # bins and colors for the map
-bins <- c(-Inf, -100, 0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
-rt_range <- range(rt_long_all$Rt_plot, na.rm = TRUE)
-colors_default <- c("#696969", "#9e9e9e",
-                    rev(c('#d73027','#fc8d59','#fee090','#ffffbf','#e0f3f8',
-                          '#91bfdb','#4575b4')))
-color_labels <- c("Insufficient total cases", "Insufficient new cases",
-                  "0.00 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
-                  "1.25 - 1.50", "1.50 - 2.00", "2+")
-pal_default <- purrr::partial(colorBin, palette = colors_default, bins = bins)
+bins_rt <- c(0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
+bins_cases <- c(0, 1, 10, 25, 50, 100, 500, 1000, Inf)
+bins_deaths <- c(0, 1, 2, 5, 10, 25, 50, Inf)
+colors_rt <- rev(brewer.pal(7, "RdYlBu"))
+colors_cases <- rev(brewer.pal(7, "YlOrBr"))
+
+generate_labels <- function(bins, n_decimals = 0) {
+  stopifnot(bins[length(bins)] == Inf)
+
+  bins_trunc <- bins[1:(length(bins) - 1)]
+  upper_labels <- data.table::shift(bins_trunc, n = -1, fill = NA)
+
+  for (i in seq_along(bins_trunc)) {
+  }
+
+}
+
+rt_color_labels <- c("0.00 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
+                     "1.25 - 1.50", "1.50 - 2.00", "2+")
+pal_rt <- purrr::partial(colorBin, palette = colors_rt, bins = bins_rt)
+pal_cases <- purrr::partial(colorBin, palette = colors_cases,
+                            bins = bins_cases)
+pal_deaths <- purrr::partial(colorBin, palette = colors_cases,
+                             bins = bins_deaths)
+pal_lst <- list(rt = pal_rt, case = pal_cases, death = pal_deaths)
 
 # set up defaults for adding stuff to leaflet maps
 addPolygons_default <-
@@ -77,7 +96,7 @@ addCircles_default <-
                   fillOpacity = 0.7, bringToFront = TRUE))
 
 # get range of possible dates
-dates <- unique(rt_long_all$date_lag)
+dates <- unique(rt_long_all$date)
 min_date <- min(dates)
 max_date <- max(dates)
 
@@ -91,25 +110,23 @@ dt_js_callback = JS("table.on( 'order.dt search.dt', function () {
 ## Define helper functions
 ########################################################################
 
-#' Generate labels for Rt.
+#' Generate labels for Rt, case rate, or death rate.
 #'
-#' @param sf_dat An sf object with columns "Rt", "Rt_lwr", "Rt_upr", "UID",
-#' "dispID", "geometry"
-rt_labeller <- function(sf_dat) {
-  stopifnot(names(sf_dat) == c("Rt", "Rt_lwr", "Rt_upr", "UID",
+rate_labeller <- function(sf_dat, outcome = c("rt", "case", "death")) {
+  stopifnot(names(sf_dat) == c("estimate", "ci_lower", "ci_upper", "UID",
                                "dispID", "geometry"))
-  rt_col <- sf_dat[["Rt"]]
-  total_case_idx <- which(rt_col <= -100)
-  new_case_idx <- which(0 > rt_col & rt_col > -100)
-  rt_idx <- which(rt_col >= 0)
-  rt_str <- rep(NA, length(rt_col))
-  rt_str[total_case_idx] <- "Insufficient total cases"
-  rt_str[new_case_idx] <- "Insufficient new cases"
-  rt_str[rt_idx] <- sprintf("Rt: %0.2f (%0.2f - %0.2f)",
-                            rt_col[rt_idx],
-                            sf_dat$Rt_lwr[rt_idx],
-                            sf_dat$Rt_upr[rt_idx])
-  return(rt_str)
+  outcome <- match.arg(outcome)
+  outcome_col <- sf_dat$estimate
+  insufficient_str <- ifelse(outcome == "death", "deaths", "cases")
+  labels_out <- rep(NA, length(outcome_col))
+  na_idx <- is.na(outcome_col)
+  labels_out[na_idx] <- sprintf("Too few %s", insufficient_str)
+  labels_out[!na_idx] <- sprintf("%s: %0.2f (%0.2f - %0.2f)",
+                                 outcome,
+                                 outcome_col[!na_idx],
+                                 sf_dat$ci_lower[!na_idx],
+                                 sf_dat$ci_upper[!na_idx])
+  return(labels_out)
 }
 
 #' Generate labels for the map
@@ -117,12 +134,10 @@ rt_labeller <- function(sf_dat) {
 #' @param sf_dat An sf object with columns "Rt", "Rt_lwr", "Rt_upr", "UID",
 #' "dispID", "geometry"
 #' @param date_select The selected date
-master_labeller <- function(sf_dat, date_select) {
-  stopifnot(names(sf_dat) == c("Rt", "Rt_lwr", "Rt_upr", "UID",
-                               "dispID", "geometry"))
-  rt_labels <- rt_labeller(sf_dat)
+master_labeller <- function(sf_dat, date_select, outcome) {
+  rate_labels <- rate_labeller(sf_dat, outcome)
   labels_final <- sprintf("<strong>%s</strong><br/>Date: %s<br/>%s",
-                          sf_dat$dispID, date_select, rt_labels) %>%
+                          sf_dat$dispID, date_select, rate_labels) %>%
       lapply(htmltools::HTML)
   return(labels_final)
 }
@@ -158,17 +173,19 @@ get_county_uids <- function(state_uid_str) {
 #' @param sel_resolution Selected resolution.
 #' @param state_uid A state UID string. If non-null, uses the state UID to
 #' select the counties in that state. See get_county_uids.
-sf_by_date_res <- function(date_select,
+sf_by_date_res <- function(date_select, outcome = c("rt", "case", "death"),
                            sel_resolution = c("state_USA", "state_Canada",
                                               "state_China", "state_Australia",
                                               "county", "country"),
                            state_uid = NULL) {
+  outcome <- match.arg(outcome)
   sel_resolution <- match.arg(sel_resolution)
   date_str <- format(date_select, "%Y-%m-%d")
-  rt_col <- paste0("Rt_plot_", date_str)
-  rtlwr_col <- paste0("Rt_lwr_", date_str)
-  rtupr_col <- paste0("Rt_upr_", date_str)
-  select_cols <- c(rt_col, rtlwr_col, rtupr_col, "UID", "dispID")
+  rate_col <- ifelse(outcome == "rt", paste0(outcome, "_", date_str),
+                     paste0(outcome, "_rate_", date_str))
+  lwr_col <- paste0(outcome, "_lower_", date_str)
+  upr_col <- paste0(outcome, "_upper_", date_str)
+  select_cols <- c(rate_col, lwr_col, upr_col, "UID", "dispID")
 
   if (is.null(state_uid)) {
     ret_sf <- sf_all %>%
@@ -183,7 +200,7 @@ sf_by_date_res <- function(date_select,
                       UID %in% county_uids$extra_uids) %>%
       dplyr::select(!!select_cols)
   }
-  names(ret_sf) <- c("Rt", "Rt_lwr", "Rt_upr", "UID", "dispID", "geometry")
+  names(ret_sf) <- c("estimate", "ci_lower", "ci_upper", "UID", "dispID", "geometry")
   return(ret_sf)
 }
 
@@ -194,22 +211,26 @@ sf_by_date_res <- function(date_select,
 #' @param labels Labels for each row in the sf data.
 #' @param grpid Group ID for the added polygons and points. Allows one to use
 #' clearGroup to remove the added polygons and points.
-addPolygon_Point <- function(.map, .data, labels, grpid = "default") {
-  pal <- pal_default(domain = .data$Rt)
-  stopifnot(names(.data) == c("Rt", "Rt_lwr", "Rt_upr", "UID", "dispID",
-                             "geometry"))
+addPolygon_Point <- function(.map, .data, labels,
+                             outcome = c("rt", "case", "death"),
+                             grpid = "default") {
+  outcome <- match.arg(outcome)
+  stopifnot(names(.data) == c("estimate", "ci_lower", "ci_upper", "UID",
+                              "dispID", "geometry"))
+  pal_cur <- pal_lst[[outcome]]
+  pal <- pal_cur(domain = .data$estimate)
   polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
   data_polygons <- .data[polygon_idx, ]
   data_points <- .data[!polygon_idx, ]
   map_ret <- addPolygons_default(.map, data = data_polygons,
                                  group = grpid,
-                                 fillColor = ~pal(Rt), layer = ~UID,
+                                 fillColor = ~pal(estimate), layer = ~UID,
                                  label = labels[polygon_idx])
 
   if (sum(polygon_idx) < nrow(.data)) {
     map_ret <- addCircles_default(map_ret, data = data_points,
                                   group = grpid,
-                                  fillColor = ~pal(Rt), layer = ~UID,
+                                  fillColor = ~pal(estimate), layer = ~UID,
                                   label = labels[!polygon_idx])
   }
   return(map_ret)
@@ -250,20 +271,12 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
 click_plot <- function(plt_dat) {
   place_name <- unique(plt_dat$dispID)
   rt_plt_title <- sprintf("Rt for %s", place_name)
-  ylim_max <- ceiling(max(plt_dat$Rt_upr))
-  xlim_max <- max(plt_dat$date)
-  xlim_min <- min(plt_dat$date_lag)
   rt_plt <- plt_dat %>%
-    ggplot(aes(x = date_lag)) +
-    geom_ribbon(aes(ymin = Rt_loess_lwr, ymax = Rt_loess_upr, y = Rt_loess_fit),
-                fill = "#d6d6d6") +
-    geom_point(aes(y = Rt_plot), color = "black") +
-    geom_errorbar(aes(ymin = Rt_lwr, ymax = Rt_upr, y = Rt_plot), color = "black") +
-    geom_line(aes(y = Rt_loess_fit), colour = "#3366ff", lwd = 1.5) +
-    coord_cartesian(ylim = c(0, ylim_max)) +
+    ggplot(aes(x = date, y = rt, ymin = rt_lower, ymax = rt_upper)) +
+    geom_ribbon(fill = "#9e9e9e") + geom_line() +
+    coord_cartesian(ylim = c(0, NA)) +
     geom_hline(yintercept = 1, lty = 2) +
-    xlab("Date (lagged 5 days)") + ylab("") + ggtitle(rt_plt_title) +
-    xlim(xlim_min, xlim_max) +
+    xlab("Date") + ylab("") + ggtitle(rt_plt_title) +
     theme_cowplot() +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
@@ -271,50 +284,39 @@ click_plot <- function(plt_dat) {
 
   newcases_plt_title <- sprintf("New Cases for %s", place_name)
   newcases_plt <- plt_dat %>%
-    select(date, positiveIncrease, positive_7day) %>%
-    ggplot(aes(x = date)) +
-    geom_line(aes(y = positive_7day, linetype = "positive_7day")) +
-    geom_line(aes(y = positiveIncrease, linetype = "positiveIncrease")) +
-    scale_linetype_discrete(name = "",
-                            breaks = c("positive_7day", "positiveIncrease"),
-                            labels = c("7-day average of new cases",
-                                       "Daily new cases")) +
+    ggplot(aes(x = date, y = case_rate, ymin = case_lower, ymax = case_upper)) +
+    geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Smoothed")) +
+    geom_line(aes(y = positiveIncrease_percapita, linetype = "Unsmoothed")) +
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
-    xlim(xlim_min, xlim_max) +
     coord_cartesian(ylim = c(0, NA)) +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
           legend.position = "bottom") +
     guides(linetype = guide_legend(nrow = 2))
-  final_plt <- plot_grid(rt_plt, newcases_plt, nrow = 2, align = "v",
-                          axis = "l")
+  deaths_plt_title <- sprintf("New Deaths for %s", place_name)
+  deaths_plt <- plt_dat %>%
+    ggplot(aes(x = date, y = death_rate, ymin = death_lower, ymax = death_upper)) +
+    geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Smoothed")) +
+    geom_line(aes(y = deathIncrease_percapita, linetype = "Unsmoothed")) +
+    xlab("Date") + ylab("") + ggtitle(deaths_plt_title) +
+    theme_cowplot() +
+    coord_cartesian(ylim = c(0, NA)) +
+    background_grid(major = "xy", minor = "xy") +
+    theme(text = element_text(size = 18),
+          axis.text = element_text(size = 15),
+          legend.position = "bottom") +
+    guides(linetype = guide_legend(nrow = 2))
+  final_plt <- plot_grid(rt_plt, newcases_plt, deaths_plt, ncol = 1,
+                         align = "v", axis = "l")
   return(final_plt)
 }
 
 #' Preprocess data frame to be displayed by DT.
 munge_for_dt <- function(df) {
-  ret <- df %>%
-    dplyr::mutate(Rt = ifelse(Rt_plot > 0, round(Rt_plot, 2), NA),
-                  Rt_lwr = round(Rt_lwr, 2),
-                  Rt_upr = round(Rt_upr, 2),
-                  positive_percapita = round(positive_percapita, 0),
-                  positiveIncr_percapita = round(positiveIncr_percapita, 2),
-                  death_percapita = round(death_percapita, 0),
-                  deathIncr_percapita = round(deathIncr_percapita, 2)) %>%
-    dplyr::select(Location = dispID, Rt,
-                  `CI Lower` = Rt_lwr,
-                  `CI Upper` = Rt_upr,
-                  `New Cases` = positiveIncrease,
-                  `New Cases per Million` = positiveIncr_percapita,
-                  `Cum. Cases` = positive,
-                  `Cum. Cases per Million` = positive_percapita,
-                  `New Deaths` = deathIncrease,
-                  `New Deaths per Million` = deathIncr_percapita,
-                  `Cum. Deaths` = death,
-                  `Cum. Deaths per Million` = death_percapita) %>%
-    dplyr::arrange(desc(Rt), desc(`Cum. Cases`))
+  ret <- df[, .(dispID, positive, positive_percapita, death, death_percapita)]
+  # TODO: add other stuff here
   return(ret)
 }
 
@@ -396,16 +398,20 @@ ui <- fluidPage(
   titlePanel("Visualizing COVID-19's Effective Reproduction Number (Rt)"),
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
-    tabPanel("Rt Map",
+    tabPanel("Map",
       sidebarLayout(
         sidebarPanel(
           p("Use slider to adjust date. Click on an area to see its Rt over time."),
           p("Click play button to animate Rt over time."),
           p("Note the Rt is lagged by 5 days."),
-          sliderInput("RtDate", label = "Date",
+          sliderInput("map_date", label = "Date",
                       min = min_date, max = max_date,
                       value = max_date,
                       animate = animationOptions(interval = 3000)),
+          selectInput("map_outcome", "Metric:",
+                      choices = list("Rt" = "rt",
+                                     "New cases/day" = "case",
+                                     "New deaths/day" = "death")),
           selectInput("select_resolution", "Resolution:",
                       choices = list("World" = "country",
                                      "US States" = "state_USA",
@@ -414,10 +420,10 @@ ui <- fluidPage(
                                      "Australian Provinces" = "state_Australia",
                                      "Chinese Provinces" = "state_China")),
           # plot of Rt over time
-          plotOutput("RtOverTime", height = "600px")
+          plotOutput("map_click_plot", height = "600px")
         ), # end of sidebarPanel
         mainPanel(
-          leafletOutput("RtMap", height = "80vh", width = "100%"),
+          leafletOutput("map_main", height = "80vh", width = "100%"),
           h4(textOutput("Rt_table_title")),
           DT::DTOutput("Rt_table"),
           br(),
@@ -533,7 +539,7 @@ server <- function(input, output, session) {
   ########################################################################
 
   # The basic big Rt map
-  output$RtMap <- renderLeaflet({
+  output$map_main <- renderLeaflet({
     suppressWarnings(
       leaflet(options = list(worldCopyJump = TRUE)) %>%
         setView(0, 30, 2) %>%
@@ -541,7 +547,7 @@ server <- function(input, output, session) {
         addProviderTiles(providers$Stamen.TonerLite,
                          options = providerTileOptions(minZoom = 1,
                                                        noWrap = TRUE)) %>%
-        addLegend(colors = colors_default, labels = color_labels,
+        addLegend(colors = colors_rt, labels = rt_color_labels,
                   opacity = 0.7, title = "Rt", position = "bottomleft")
     )
   })
@@ -558,17 +564,18 @@ server <- function(input, output, session) {
       "country" = c(0, 30, 2)
     )
     suppressWarnings(
-      leafletProxy("RtMap") %>%
+      leafletProxy("map_main") %>%
         setView(cur_view[1], cur_view[2], cur_view[3])
     )
   })
 
   # update the data based on values
   sf_dat_update <- reactive({
-    sel_resolution <- input$select_resolution
-    validate(need(input$RtDate, "Please select a date."))
-    validate(need(sel_resolution, "Please select a resolution."))
-    sf_by_date_res(input$RtDate, sel_resolution)
+    validate(need(input$map_date, "Please select a date."))
+    validate(need(input$select_resolution, "Please select a resolution."))
+    validate(need(input$map_outcome, "Please select a metric."))
+    sf_by_date_res(input$map_date, outcome = input$map_outcome,
+                   sel_resolution = input$select_resolution, state_uid = NULL)
   })
 
   # keep track of previous group ID so we can clear its shapes
@@ -576,19 +583,22 @@ server <- function(input, output, session) {
 
   # change the shapes on the map when the resolution or date changes
   observe({
-    date_select <- format(input$RtDate, "%Y-%m-%d")
+    date_select <- format(input$map_date, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
     validate(need(date_select, "Please select a date."))
     validate(need(sel_resolution, "Please select a resolution."))
+    validate(need(input$map_outcome, "Please select a metric."))
     sf_dat_cur <- sf_dat_update()
-    labels_final <- master_labeller(sf_dat_cur, date_select)
-    cur_grpid <- digest::digest(c(date_select, sel_resolution))
+    labels_final <- master_labeller(sf_dat_cur, date_select, input$map_outcome)
+    cur_grpid <- digest::digest(c(date_select, sel_resolution,
+                                  input$map_outcome))
     prev_grpid <- prev_grpid_all_reactive$val
-    map <- leafletProxy("RtMap", data = sf_dat_cur)
+    map <- leafletProxy("map_main", data = sf_dat_cur)
     if (prev_grpid != cur_grpid) {
       suppressWarnings({
         map <- map %>%
-          addPolygon_Point(sf_dat_cur, labels_final, cur_grpid) %>%
+          addPolygon_Point(sf_dat_cur, labels = labels_final,
+                           outcome = input$map_outcome, grpid = cur_grpid) %>%
           clearGroup(prev_grpid)
       })
     }
@@ -597,35 +607,33 @@ server <- function(input, output, session) {
   })
 
   # Rt over time based on click
-  output$RtOverTime <- renderCachedPlot({
-    validate(need(input$RtMap_shape_click,
+  output$map_click_plot <- renderCachedPlot({
+    validate(need(input$map_main_shape_click,
                   message = "Click on a location to show Rt and new cases over time."))
-    click <- input$RtMap_shape_click
-    plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
+    click <- input$map_main_shape_click
+    print(click)
+    plt_dat <- rt_long_all[UID == click$id, ]
     if (nrow(plt_dat) > 0) {
       suppressWarnings(click_plot(plt_dat))
     }
-  }, cacheKeyExpr = { input$RtMap_shape_click$id })
+  }, cacheKeyExpr = { input$map_main_shape_click$id })
 
   output$Rt_table_title <- renderText({
-    date_lag <- format(input$RtDate, "%Y-%m-%d")
-    date_actual <- format(input$RtDate + 5, "%Y-%m-%d")
-    req(date_lag)
-    sprintf("Table of metrics for %s. Rt calculated for %s (5-day lag).",
-            date_actual, date_lag)
+    date_actual <- format(input$map_date, "%Y-%m-%d")
+    req(date_actual)
+    sprintf("Table of metrics for %s.", date_actual)
   })
 
   # Table of current Rts at current resolution
   output$Rt_table <- DT::renderDT({
-    date_select <- format(input$RtDate, "%Y-%m-%d")
+    date_select <- format(input$map_date, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
     validate(need(date_select, "Please select a date."))
     validate(need(sel_resolution, "Please select a resolution."))
 
-    ret_df <- rt_long_all %>%
-      dplyr::filter(resolution == sel_resolution, date_lag == date_select,
-                    positive >= 50) %>%
-      munge_for_dt()
+    ret_df <- rt_long_all[resolution == sel_resolution & date == date_select &
+                          positive >= 50, ] %>%
+        munge_for_dt()
     validate(need(nrow(ret_df) > 0, "This data has no rows."))
     ret_df
   }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
@@ -642,13 +650,14 @@ server <- function(input, output, session) {
     selected_states <- input$compare_sel_states
     selected_counties <- input$compare_sel_counties
     selected_countries <- input$compare_sel_countries
-    selected_uids <- data.frame(
+    selected_uids <- data.table(
       UID = as.double(c(selected_states, selected_counties, selected_countries))
     )
 
     req(nrow(selected_uids) > 0)
 
-    dplyr::inner_join(rt_long_all, selected_uids, by = "UID")
+    # inner join
+    rt_long_all[selected_uids, on = "UID", nomatch = NULL]
   })
 
   # generate the plot of Rt comparisons after user hits submit
@@ -716,9 +725,8 @@ server <- function(input, output, session) {
     validate(need(input$forestPlot_resolution, "Please select a resolution."))
     date_select <- format(input$forestPlot_date, "%Y-%m-%d")
 
-    p <- rt_long_all %>%
-      dplyr::filter(resolution == input$forestPlot_resolution,
-                    date_lag == date_select) %>%
+    p <- rt_long_all[resolution == input$forestPlot_resolution &
+                     date == date_select, ] %>%
       forest_plot(input$forestPlot_resolution, date_select)
     p
   }, cacheKeyExpr = { list(input$forestPlot_date, input$forestPlot_resolution) })
@@ -745,24 +753,31 @@ server <- function(input, output, session) {
 
   # explore states map
   output$explore_states_out <- renderLeaflet({
-    ma_uid <- "84000025"
-    counties_sf <- sf_by_date_res(max_date, "county", ma_uid)
-    labels_final <- master_labeller(counties_sf, max_date)
-    pal <- pal_default(domain = counties_sf$Rt)
-    cur_grpid <- digest::digest(list(max_date, ma_uid))
-    ma_center <- state_centers$`84000025`
-    suppressWarnings(
-      map_default <- leaflet(options = list(worldCopyJump = FALSE)) %>%
-        addProviderTiles(providers$Stamen.TonerLite,
-                         options = providerTileOptions(minZoom = 3)) %>%
-        setView(ma_center[1], ma_center[2], 7) %>%
-        setMaxBounds(-180, -90, 180, 90) %>%
-        addPolygon_Point(counties_sf, labels_final, cur_grpid) %>%
-        addLegend(colors = colors_default, labels = color_labels,
-                  opacity = 0.7, title = "Rt", position = "bottomright")
-    )
-    prev_grpid_state_reactive$val <- cur_grpid
+    map_default <- leaflet(options = list(worldCopyJump = FALSE)) %>%
+      addProviderTiles(providers$Stamen.TonerLite,
+                        options = providerTileOptions(minZoom = 3)) %>%
+      setView(ma_center[1], ma_center[2], 7) %>%
+      setMaxBounds(-180, -90, 180, 90)
     map_default
+    #ma_uid <- "84000025"
+    #counties_sf <- sf_by_date_res(max_date, outcome = "rt",
+    #                              sel_resolution = "county", state_uid = ma_uid)
+    #labels_final <- master_labeller(counties_sf, max_date)
+    #pal <- pal_default(domain = counties_sf$Rt)
+    #cur_grpid <- digest::digest(list(max_date, ma_uid))
+    #ma_center <- state_centers$`84000025`
+    #suppressWarnings(
+    #  map_default <- leaflet(options = list(worldCopyJump = FALSE)) %>%
+    #    addProviderTiles(providers$Stamen.TonerLite,
+    #                     options = providerTileOptions(minZoom = 3)) %>%
+    #    setView(ma_center[1], ma_center[2], 7) %>%
+    #    setMaxBounds(-180, -90, 180, 90) %>%
+    #    addPolygon_Point(counties_sf, labels_final, cur_grpid) %>%
+    #    addLegend(colors = colors_default, labels = color_labels,
+    #              opacity = 0.7, title = "Rt", position = "bottomright")
+    #)
+    #prev_grpid_state_reactive$val <- cur_grpid
+    #map_default
   })
 
   # change zoom level only when state changes
@@ -775,37 +790,37 @@ server <- function(input, output, session) {
   })
 
   # change state county polygons when state or date changes
-  observe({
-    date_select <- format(input$state_select_date, "%Y-%m-%d")
-    state_input <- input$state_select
-    validate(need(input$state_select_date,
-                  "Please choose a date using the slider."))
-    validate(need(input$state_select, "Please choose a state."))
+  #observe({
+  #  date_select <- format(input$state_select_date, "%Y-%m-%d")
+  #  state_input <- input$state_select
+  #  validate(need(input$state_select_date,
+  #                "Please choose a date using the slider."))
+  #  validate(need(input$state_select, "Please choose a state."))
 
-    counties_sf_cur <- sf_by_date_res(input$state_select_date, "county",
-                                      state_input)
-    labels_final <- master_labeller(counties_sf_cur, date_select)
-    pal <- pal_default(domain = counties_sf_cur$Rt)
-    cur_grpid <- digest::digest(list(date_select, state_input))
-    prev_grpid <- prev_grpid_state_reactive$val
-    map_state <- leafletProxy("explore_states_out", data = counties_sf_cur)
-    if (prev_grpid != cur_grpid) {
-      suppressWarnings({
-        map_state <- map_state %>%
-          addPolygon_Point(counties_sf_cur, labels_final, cur_grpid) %>%
-          clearGroup(prev_grpid)
-      })
-    }
-    prev_grpid_state_reactive$val <- cur_grpid
-    map_state
-  })
+  #  counties_sf_cur <- sf_by_date_res(input$state_select_date, "rt", "county",
+  #                                    state_input)
+  #  labels_final <- master_labeller(counties_sf_cur, date_select)
+  #  pal <- pal_default(domain = counties_sf_cur$Rt)
+  #  cur_grpid <- digest::digest(list(date_select, state_input))
+  #  prev_grpid <- prev_grpid_state_reactive$val
+  #  map_state <- leafletProxy("explore_states_out", data = counties_sf_cur)
+  #  if (prev_grpid != cur_grpid) {
+  #    suppressWarnings({
+  #      map_state <- map_state %>%
+  #        addPolygon_Point(counties_sf_cur, labels_final, cur_grpid) %>%
+  #        clearGroup(prev_grpid)
+  #    })
+  #  }
+  #  prev_grpid_state_reactive$val <- cur_grpid
+  #  map_state
+  #})
 
   # Render plot of Rt over time on click
   output$RtOverTime_exploreState <- renderCachedPlot({
     validate(need(input$explore_states_out_shape_click,
                   message = "Click on a county to show Rt and new cases over time."))
     click <- input$explore_states_out_shape_click
-    plt_dat <- dplyr::filter(rt_long_all, UID == click$id)
+    plt_dat <- rt_long_all[UID == click$id, ]
     if (nrow(plt_dat) > 0) {
       suppressWarnings(click_plot(plt_dat))
     }
@@ -816,9 +831,8 @@ server <- function(input, output, session) {
   county_rt_long_update <- reactive({
     validate(need(input$state_select, message = "Please select a state."))
     county_uids <- get_county_uids(input$state_select)
-    rt_long_all %>%
-      dplyr::filter((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
-                    UID %in% county_uids$extra_uids)
+    rt_long_all[(UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
+                    UID %in% county_uids$extra_uids, ]
   })
 
   num_counties <- reactive({
