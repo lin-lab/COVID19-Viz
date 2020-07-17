@@ -393,6 +393,9 @@ ui <- fluidPage(
       ".leaflet .legend i{float: left;}",
       ".leaflet .legend label{float:left; text-align: left;}"
   )),
+  # This allows all links to be opened in a new tab. Fixes issue where links
+  # sometimes refuse to connect.
+  tags$head(tag("base", varArgs = list(target = "_blank"))),
   titlePanel("Visualizing COVID-19's Effective Reproduction Number (Rt)"),
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
