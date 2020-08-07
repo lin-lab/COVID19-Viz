@@ -400,6 +400,8 @@ ui <- fluidPage(
   tabsetPanel(
     # first panel: big Rt map with multiple resolutions.
     tabPanel("Rt Map",
+      br(),
+      includeMarkdown("assets/header.md"),
       sidebarLayout(
         sidebarPanel(
           p("Use slider to adjust date. Click on an area to see its Rt over time."),
