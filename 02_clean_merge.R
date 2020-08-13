@@ -364,7 +364,7 @@ provinces_sf <- provinces_sf_orig %>%
   filter(!(name %in% remove_provinces)) %>%
   select(name, admin, woe_label, geometry) %>%
   group_by(admin) %>%
-  arrange(name) %>%
+  arrange(woe_label) %>%
   mutate(
     province_id = sprintf("%02d", 1:n()),
     country_id = case_when(
@@ -379,7 +379,7 @@ provinces_sf <- provinces_sf_orig %>%
   st_sf()
 
 # Add Macau and Hong Kong
-macau_hk <- global_rt_wide[Province_State %in% c("Macau SAR", "Hong Kong SAR")]
+macau_hk <- global_rt_wide[Province_State %in% c("Macau", "Hong Kong")]
 stopifnot(nrow(macau_hk) == 2)
 
 macau_hk_sf <- make_points(macau_hk, "Combined_Key", st_crs(provinces_sf))
