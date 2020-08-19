@@ -362,9 +362,9 @@ remove_provinces <- c("Nunavut", "Jervis Bay Territory",
 
 provinces_sf <- provinces_sf_orig %>%
   filter(!(name %in% remove_provinces)) %>%
-  select(name, admin, woe_label, geometry) %>%
+  select(name, admin, name_en, geometry) %>%
   group_by(admin) %>%
-  arrange(woe_label) %>%
+  arrange(name_en) %>%
   mutate(
     province_id = sprintf("%02d", 1:n()),
     country_id = case_when(
