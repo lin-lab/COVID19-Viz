@@ -48,22 +48,15 @@ names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
 
 # bins and colors for the map
 bins_rt <- c(0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
-bins_cases <- c(0, 1, 10, 25, 50, 100, 500, 1000, Inf)
+bins_cases <- c(0, 1, 10, 25, 50, 100, 250, Inf)
 bins_deaths <- c(0, 1, 2, 5, 10, 25, 50, Inf)
 colors_rt <- rev(brewer.pal(7, "RdYlBu"))
-colors_cases <- rev(brewer.pal(7, "YlOrBr"))
+colors_cases <- brewer.pal(7, "YlOrRd")
 
-generate_labels <- function(bins, n_decimals = 0) {
-  stopifnot(bins[length(bins)] == Inf)
-
-  bins_trunc <- bins[1:(length(bins) - 1)]
-  upper_labels <- data.table::shift(bins_trunc, n = -1, fill = NA)
-
-  for (i in seq_along(bins_trunc)) {
-  }
-
-}
-
+cases_color_labels <- c("0 - 1", "1 - 10", "10 - 25", "25 - 50", "50 - 100",
+                        "100 - 250", "250+")
+deaths_color_labels <- c("0 - 1", "1 - 2", "2 - 5", "5 - 10", "10 - 25",
+                         "25 - 50", "50+")
 rt_color_labels <- c("0.00 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
                      "1.25 - 1.50", "1.50 - 2.00", "2+")
 pal_rt <- purrr::partial(colorBin, palette = colors_rt, bins = bins_rt)
@@ -112,18 +105,17 @@ dt_js_callback = JS("table.on( 'order.dt search.dt', function () {
 
 #' Generate labels for Rt, case rate, or death rate.
 #'
-rate_labeller <- function(sf_dat, outcome = c("rt", "case", "death")) {
+rate_labeller <- function(sf_dat, metric = c("rt", "case", "death")) {
   stopifnot(names(sf_dat) == c("estimate", "ci_lower", "ci_upper", "UID",
                                "dispID", "geometry"))
-  outcome <- match.arg(outcome)
-  outcome_col <- sf_dat$estimate
-  insufficient_str <- ifelse(outcome == "death", "deaths", "cases")
-  labels_out <- rep(NA, length(outcome_col))
-  na_idx <- is.na(outcome_col)
+  metric <- match.arg(metric)
+  metric_col <- sf_dat$estimate
+  insufficient_str <- ifelse(metric == "death", "deaths", "cases")
+  labels_out <- rep(NA, length(metric))
+  na_idx <- is.na(metric_col)
   labels_out[na_idx] <- sprintf("Too few %s", insufficient_str)
   labels_out[!na_idx] <- sprintf("%s: %0.2f (%0.2f - %0.2f)",
-                                 outcome,
-                                 outcome_col[!na_idx],
+                                 metric, metric_col[!na_idx],
                                  sf_dat$ci_lower[!na_idx],
                                  sf_dat$ci_upper[!na_idx])
   return(labels_out)
@@ -134,8 +126,8 @@ rate_labeller <- function(sf_dat, outcome = c("rt", "case", "death")) {
 #' @param sf_dat An sf object with columns "Rt", "Rt_lwr", "Rt_upr", "UID",
 #' "dispID", "geometry"
 #' @param date_select The selected date
-master_labeller <- function(sf_dat, date_select, outcome) {
-  rate_labels <- rate_labeller(sf_dat, outcome)
+master_labeller <- function(sf_dat, date_select, metric) {
+  rate_labels <- rate_labeller(sf_dat, metric)
   labels_final <- sprintf("<strong>%s</strong><br/>Date: %s<br/>%s",
                           sf_dat$dispID, date_select, rate_labels) %>%
       lapply(htmltools::HTML)
@@ -173,18 +165,18 @@ get_county_uids <- function(state_uid_str) {
 #' @param sel_resolution Selected resolution.
 #' @param state_uid A state UID string. If non-null, uses the state UID to
 #' select the counties in that state. See get_county_uids.
-sf_by_date_res <- function(date_select, outcome = c("rt", "case", "death"),
+sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
                            sel_resolution = c("state_USA", "state_Canada",
                                               "state_China", "state_Australia",
                                               "county", "country"),
                            state_uid = NULL) {
-  outcome <- match.arg(outcome)
+  metric <- match.arg(metric)
   sel_resolution <- match.arg(sel_resolution)
   date_str <- format(date_select, "%Y-%m-%d")
-  rate_col <- ifelse(outcome == "rt", paste0(outcome, "_", date_str),
-                     paste0(outcome, "_rate_", date_str))
-  lwr_col <- paste0(outcome, "_lower_", date_str)
-  upr_col <- paste0(outcome, "_upper_", date_str)
+  rate_col <- ifelse(metric == "rt", paste0(metric, "_", date_str),
+                     paste0(metric, "_rate_", date_str))
+  lwr_col <- paste0(metric, "_lower_", date_str)
+  upr_col <- paste0(metric, "_upper_", date_str)
   select_cols <- c(rate_col, lwr_col, upr_col, "UID", "dispID")
 
   if (is.null(state_uid)) {
@@ -212,12 +204,12 @@ sf_by_date_res <- function(date_select, outcome = c("rt", "case", "death"),
 #' @param grpid Group ID for the added polygons and points. Allows one to use
 #' clearGroup to remove the added polygons and points.
 addPolygon_Point <- function(.map, .data, labels,
-                             outcome = c("rt", "case", "death"),
+                             metric = c("rt", "case", "death"),
                              grpid = "default") {
-  outcome <- match.arg(outcome)
+  metric <- match.arg(metric)
   stopifnot(names(.data) == c("estimate", "ci_lower", "ci_upper", "UID",
                               "dispID", "geometry"))
-  pal_cur <- pal_lst[[outcome]]
+  pal_cur <- pal_lst[[metric]]
   pal <- pal_cur(domain = .data$estimate)
   polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
   data_polygons <- .data[polygon_idx, ]
@@ -271,10 +263,11 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
 click_plot <- function(plt_dat) {
   place_name <- unique(plt_dat$dispID)
   rt_plt_title <- sprintf("Rt for %s", place_name)
+  ymax_rt <- min(5, max(plt_dat$rt_upper, na.rm = TRUE))
   rt_plt <- plt_dat %>%
     ggplot(aes(x = date, y = rt, ymin = rt_lower, ymax = rt_upper)) +
     geom_ribbon(fill = "#9e9e9e") + geom_line() +
-    coord_cartesian(ylim = c(0, NA)) +
+    coord_cartesian(ylim = c(0, ymax_rt)) +
     geom_hline(yintercept = 1, lty = 2) +
     xlab("Date") + ylab("") + ggtitle(rt_plt_title) +
     theme_cowplot() +
@@ -283,13 +276,17 @@ click_plot <- function(plt_dat) {
           axis.text = element_text(size = 15))
 
   newcases_plt_title <- sprintf("New Cases for %s", place_name)
+  ymax_newcases <- min(300, max(plt_dat$case_upper,
+                                plt_dat$positiveIncrease_percapita,
+                                na.rm = TRUE))
+  ymax_newcases <- NA
   newcases_plt <- plt_dat %>%
     ggplot(aes(x = date, y = case_rate, ymin = case_lower, ymax = case_upper)) +
     geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Smoothed")) +
     geom_line(aes(y = positiveIncrease_percapita, linetype = "Unsmoothed")) +
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
-    coord_cartesian(ylim = c(0, NA)) +
+    coord_cartesian(ylim = c(0, ymax_newcases)) +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
@@ -321,30 +318,41 @@ munge_for_dt <- function(df) {
 }
 
 #' Draw forest plot of current Rt and confidence interval
-forest_plot <- function(df, resolution, date_lag) {
-  bins_pos <- bins[-c(1, 2)]
-  color_labels_pos <- color_labels[-c(1, 2)]
-  tmp <- df %>%
-    dplyr::filter(Rt_plot > 0) %>%
-    dplyr::arrange(Rt_plot) %>%
-    dplyr::mutate(`Rt Range` = cut(Rt_plot, breaks = bins_pos,
-                                  labels = color_labels_pos,
-                                  include.lowest = TRUE, right = FALSE))
+forest_plot <- function(df, resolution, date_lag,
+                        metric = c("rt", "case", "death")) {
+  metric <- match.arg(metric)
+  plt_params <- switch(metric,
+    "rt" = list(bins = bins_rt, var = "rt", lwr = "rt_lower", upr = "rt_upper",
+                labels = rt_color_labels, color = colors_rt,
+                title_str = "Rt"),
+    "case" = list(bins = bins_cases, var = "case_rate", lwr = "case_lower",
+                  upr = "case_upper", labels = cases_color_labels,
+                  color = colors_cases,
+                  title_str = "Case Rate per Million"),
+    "death" = list(bins = bins_deaths, var = "death_rate", lwr = "death_lower",
+                   upr = "death_upper", labels = deaths_color_labels,
+                   color = colors_cases,
+                   title_str = "Death Rate per Million")
+  )
+  df$range <- cut(df[[plt_params$var]], breaks = plt_params$bins,
+                  labels = plt_params$labels, include.lowest = TRUE,
+                  right = FALSE)
+
   # configure colors for Rt bins
-  color_pal <- colors_default[-c(1, 2)]
-  names(color_pal) <- levels(tmp$`Rt Range`)
+  color_pal <- plt_params$color
+  names(color_pal) <- levels(df$range)
 
   # change e.g. Texas, USA -> Texas; Kings, New York -> Kings
+  setorderv(df, cols = plt_params$var, order = 1)
   if (resolution == "county" || startsWith(resolution, "state_")) {
-    plt_dat <- tmp %>%
-      dplyr::mutate(dispID_new = sub(", [A-Za-z ]+", "", dispID),
-                    dispID_ord = factor(dispID_new, levels = dispID_new))
+    df[, dispID_new := sub(", [A-Za-z ]+", "", dispID)]
+    df[, dispID_ord := factor(dispID_new, levels = dispID_new)]
   } else {
-    plt_dat <- tmp %>%
-      dplyr::mutate(dispID_ord = factor(dispID, levels = dispID))
+    df[, dispID_ord := factor(dispID, levels = dispID)]
   }
-
-  if (nrow(plt_dat) == 0) {
+  plt_df <- na.omit(df)
+  if (nrow(plt_df) == 0) {
+    # quit if there's no data
     p <- ggplot() +
       ggtitle("Insufficient data") +
       theme_dark() +
@@ -357,16 +365,19 @@ forest_plot <- function(df, resolution, date_lag) {
             panel.grid.major.x = element_blank(),
             panel.grid.minor.x = element_blank())
   } else {
-    title_str <- sprintf("Rt on %s", date_lag)
-    p <- ggplot(plt_dat,
-          aes(x = Rt_plot, y = dispID_ord, xmin = Rt_lwr, xmax = Rt_upr,
-              color = `Rt Range`)) +
+    title_str <- sprintf("%s on %s", plt_params$title_str, date_lag)
+    xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
+    p <- ggplot(plt_df,
+          aes_string(x = plt_params$var, y = "dispID_ord",
+                      xmin = plt_params$lwr, xmax = plt_params$upr,
+                      color = "range")) +
       geom_point(size = 3) + geom_errorbarh(size = 2) +
       scale_color_manual(drop = FALSE, values = color_pal) +
       geom_vline(xintercept = 1, lty = 2, color = "white", lwd = 1.5) +
-      xlab("Rt and 95% CI") + ylab("") +
+      xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
       theme_dark() +
+      #coord_cartesian(xlim = c(0, 5)) +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
             axis.title = element_text(size = 20),
@@ -391,7 +402,7 @@ ui <- fluidPage(
   tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
   tags$head(includeHTML("assets/google-analytics.html")),
   tags$head(tags$style(
-      ".leaflet .legend {width:200px; text-align: left;}",
+      ".leaflet .legend {text-align: left;}",
       ".leaflet .legend i{float: left;}",
       ".leaflet .legend label{float:left; text-align: left;}"
   )),
@@ -408,7 +419,7 @@ ui <- fluidPage(
                       min = min_date, max = max_date,
                       value = max_date,
                       animate = animationOptions(interval = 3000)),
-          selectInput("map_outcome", "Metric:",
+          selectInput("map_metric", "Metric:",
                       choices = list("Rt" = "rt",
                                      "New cases/day" = "case",
                                      "New deaths/day" = "death")),
@@ -449,6 +460,10 @@ ui <- fluidPage(
           selectizeInput("compare_sel_countries", label = "Countries",
                          choices = place_choices$country,
                          multiple = TRUE),
+          selectInput("compare_metric", "Metric:",
+                      choices = list("Rt" = "rt",
+                                     "New cases/day" = "case",
+                                     "New deaths/day" = "death")),
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
@@ -460,12 +475,16 @@ ui <- fluidPage(
     tabPanel("Forest Plot",
       sidebarLayout(
         sidebarPanel(
-          h4("Display a forest plot of Rt for a given resolution"),
+          h4("Display a forest plot of a metric for a given resolution"),
           p("Use slider to adjust date."),
           p("Note the Rt is lagged by 5 days."),
           sliderInput("forestPlot_date", label = "Date",
                       min = min_date, max = max_date,
                       value = max_date),
+          selectInput("forestPlot_metric", "Metric:",
+                      choices = list("Rt" = "rt",
+                                     "New cases/day" = "case",
+                                     "New deaths/day" = "death")),
           selectInput("forestPlot_resolution", "Resolution:",
                       choices = list("World" = "country",
                                      "US States" = "state_USA",
@@ -548,7 +567,8 @@ server <- function(input, output, session) {
                          options = providerTileOptions(minZoom = 1,
                                                        noWrap = TRUE)) %>%
         addLegend(colors = colors_rt, labels = rt_color_labels,
-                  opacity = 0.7, title = "Rt", position = "bottomleft")
+                  opacity = 0.7, title = "Rt", position = "bottomleft",
+                  layerId = "legend")
     )
   })
 
@@ -573,8 +593,8 @@ server <- function(input, output, session) {
   sf_dat_update <- reactive({
     validate(need(input$map_date, "Please select a date."))
     validate(need(input$select_resolution, "Please select a resolution."))
-    validate(need(input$map_outcome, "Please select a metric."))
-    sf_by_date_res(input$map_date, outcome = input$map_outcome,
+    validate(need(input$map_metric, "Please select a metric."))
+    sf_by_date_res(input$map_date, metric = input$map_metric,
                    sel_resolution = input$select_resolution, state_uid = NULL)
   })
 
@@ -587,24 +607,48 @@ server <- function(input, output, session) {
     sel_resolution <- input$select_resolution
     validate(need(date_select, "Please select a date."))
     validate(need(sel_resolution, "Please select a resolution."))
-    validate(need(input$map_outcome, "Please select a metric."))
+    validate(need(input$map_metric, "Please select a metric."))
     sf_dat_cur <- sf_dat_update()
-    labels_final <- master_labeller(sf_dat_cur, date_select, input$map_outcome)
+    labels_final <- master_labeller(sf_dat_cur, date_select, input$map_metric)
     cur_grpid <- digest::digest(c(date_select, sel_resolution,
-                                  input$map_outcome))
+                                  input$map_metric))
     prev_grpid <- prev_grpid_all_reactive$val
     map <- leafletProxy("map_main", data = sf_dat_cur)
     if (prev_grpid != cur_grpid) {
       suppressWarnings({
         map <- map %>%
           addPolygon_Point(sf_dat_cur, labels = labels_final,
-                           outcome = input$map_outcome, grpid = cur_grpid) %>%
+                           metric = input$map_metric, grpid = cur_grpid) %>%
           clearGroup(prev_grpid)
       })
     }
     prev_grpid_all_reactive$val <- cur_grpid
     map
   })
+
+  # change the legend when the map metric changes
+  observe({
+    validate(need(input$map_metric, "Please select a metric."))
+    map <- leafletProxy("map_main")
+    legend_params <- switch(input$map_metric,
+      "rt" = list(cur_colors = colors_rt, cur_labels = rt_color_labels,
+                  cur_title = "Rt"),
+      "case" = list(cur_colors = colors_cases, cur_labels = cases_color_labels,
+                    cur_title = "Cases per mil."),
+      "death" = list(cur_colors = colors_cases, cur_labels = deaths_color_labels,
+                     cur_title = "Deaths per mil.")
+    )
+
+    suppressWarnings({
+      map <- map %>%
+        addLegend(colors = legend_params$cur_colors,
+                  labels = legend_params$cur_labels,
+                  opacity = 0.7, title = legend_params$cur_title,
+                  position = "bottomleft", layerId = "legend")
+      map
+    })
+  })
+
 
   # Rt over time based on click
   output$map_click_plot <- renderCachedPlot({
@@ -662,13 +706,10 @@ server <- function(input, output, session) {
 
   # generate the plot of Rt comparisons after user hits submit
   output$compare_plt_out <- renderPlot({
-    cur_dat <- plt_dat_compare() %>%
-      dplyr::mutate(Rt_plot = case_when(
-              Rt_plot < 0 ~ NA_real_,
-              TRUE ~ Rt_plot))
+    cur_dat <- plt_dat_compare()
     validate(need(nrow(cur_dat) > 0,
                   "Insufficient data for selected locations."))
-    ylim_max <- ceiling(max(cur_dat$Rt_upr))
+    validate(need(input$compare_metric, "Please select a metric."))
     xlim_max <- max(cur_dat$date)
     xlim_min <- min(cur_dat$date_lag)
 
@@ -722,21 +763,25 @@ server <- function(input, output, session) {
 
   output$RtForestPlot <- renderCachedPlot({
     validate(need(input$forestPlot_date, "Please select a date."))
+    validate(need(input$forestPlot_metric, "Please select a metric."))
     validate(need(input$forestPlot_resolution, "Please select a resolution."))
     date_select <- format(input$forestPlot_date, "%Y-%m-%d")
 
     p <- rt_long_all[resolution == input$forestPlot_resolution &
                      date == date_select, ] %>%
-      forest_plot(input$forestPlot_resolution, date_select)
+      forest_plot(input$forestPlot_resolution, date_select,
+                  metric = input$forestPlot_metric)
     p
-  }, cacheKeyExpr = { list(input$forestPlot_date, input$forestPlot_resolution) })
+  }, cacheKeyExpr = { list(input$forestPlot_date, input$forestPlot_metric,
+                           input$forestPlot_resolution) })
 
   output$RtForestPlot_ui <- renderUI({
     validate(need(input$forestPlot_date, "Please select a date."))
+    validate(need(input$forestPlot_metric, "Please select a metric."))
     validate(need(input$forestPlot_resolution, "Please select a resolution."))
     plt_height <-
       switch(input$forestPlot_resolution,
-             country = "1800px",
+             country = "2000px",
              state_USA = "900px",
              state_Canada = "300px",
              state_Australia = "300px",
@@ -760,7 +805,7 @@ server <- function(input, output, session) {
       setMaxBounds(-180, -90, 180, 90)
     map_default
     #ma_uid <- "84000025"
-    #counties_sf <- sf_by_date_res(max_date, outcome = "rt",
+    #counties_sf <- sf_by_date_res(max_date, metric = "rt",
     #                              sel_resolution = "county", state_uid = ma_uid)
     #labels_final <- master_labeller(counties_sf, max_date)
     #pal <- pal_default(domain = counties_sf$Rt)
