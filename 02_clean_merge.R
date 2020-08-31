@@ -13,7 +13,9 @@ library(rgeos)
 library(purrr)
 library(ggplot2)
 
-reformat_data <- function(dt) {
+START_DATE <- ymd("2020-04-01")
+
+reformat_data <- function(dt, start_date) {
   dt[, date := ymd(date)]
 
   scale_cols <- c("case_rate", "case_lower", "case_upper", "death_rate",
@@ -24,6 +26,8 @@ reformat_data <- function(dt) {
   dt[, death_percapita := 1e6 * death / population]
   dt[, positiveIncrease_percapita := 1e6 * positiveIncrease / population]
   dt[, deathIncrease_percapita := 1e6 * deathIncrease / population]
+  ret <- dt[date >= start_date]
+  return(ret)
 }
 
 
@@ -31,8 +35,8 @@ reformat_data <- function(dt) {
 ## State-level data
 ########################################################################
 
-state_rt_long <- fread("raw_data/jhu_state_rt_case_death_rate.csv")
-reformat_data(state_rt_long)
+state_rt_long <- fread("raw_data/jhu_state_rt_case_death_rate.csv") %>%
+  reformat_data(START_DATE)
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
@@ -100,8 +104,8 @@ county_maps <- us_counties() %>%
   mutate(UID = as.integer(paste0("840", geoid)))
 
 county_rt_long <- fread("raw_data/jhu_county_rt_case_death_rate.csv",
-                        verbose = TRUE)
-reformat_data(county_rt_long)
+                        verbose = TRUE) %>%
+  reformat_data(START_DATE)
 
 # make combined key for county rt long
 county_rt_long[, Combined_Key := paste(county, stateName, sep = ", ")]
@@ -226,9 +230,10 @@ setnames(county_rt_long_export, old = "Combined_Key", new = "dispID")
 ## International data
 ########################################################################
 
-global_rt_long <- fread("raw_data/jhu_global_rt_case_death_rate.csv")
+global_rt_long <- fread("raw_data/jhu_global_rt_case_death_rate.csv") %>%
+  reformat_data(START_DATE)
+
 global_rt_long[Country_Region == "Canada", ]
-reformat_data(global_rt_long)
 
 # fix a typo
 global_rt_long[UID == 12406,
@@ -277,9 +282,9 @@ remove_provinces <- c("Nunavut", "Jervis Bay Territory",
 
 provinces_sf <- provinces_sf_orig %>%
   filter(!(name %in% remove_provinces)) %>%
-  select(name, admin, woe_label, geometry) %>%
+  select(name, admin, name_en, geometry) %>%
   group_by(admin) %>%
-  arrange(name) %>%
+  arrange(name_en) %>%
   mutate(
     province_id = sprintf("%02d", 1:n()),
     country_id = case_when(
@@ -294,7 +299,7 @@ provinces_sf <- provinces_sf_orig %>%
   st_sf()
 
 # Add Macau and Hong Kong
-macau_hk <- global_rt_wide[Province_State %in% c("Macau SAR", "Hong Kong SAR")]
+macau_hk <- global_rt_wide[Province_State %in% c("Macau", "Hong Kong")]
 stopifnot(nrow(macau_hk) == 2)
 
 macau_hk_sf <- make_points(macau_hk, "Combined_Key", st_crs(provinces_sf))
@@ -327,7 +332,7 @@ provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
     Country_Region == "Canada" ~ "state_Canada",
     Country_Region == "China" ~ "state_China",
     Country_Region == "Australia" ~ "state_Australia")) %>%
-  select(UID, dispID = Combined_Key, date, resolution, population,
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
          starts_with("rt"), starts_with("positive"), starts_with("death"),
          starts_with("case")) %>%
   data.table()
@@ -416,7 +421,7 @@ world_merged <- countries_wide %>%
 exported_countries <- data.table(UID = world_merged$UID)
 world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
   mutate(resolution = "country") %>%
-  select(UID, dispID = Combined_Key, date, resolution, population,
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
          starts_with("rt"), starts_with("positive"), starts_with("death"),
          starts_with("case")) %>%
   data.table()
