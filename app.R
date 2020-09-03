@@ -392,6 +392,73 @@ forest_plot <- function(df, resolution, date_lag,
   return(p)
 }
 
+compare_plt_helper <- function(dt, x, y, metric_str, ci_lwr = NULL,
+                               ci_upr = NULL, color = "dispID", fill = "dispID",
+                               yintercept = NA) {
+  title_str <- sprintf("Comparison of %s", metric_str)
+  plt <- ggplot(dt, aes_string(x = x, y = y, color = color)) +
+    geom_line() + geom_point() +
+    scale_color_discrete(name = "Location") +
+    scale_fill_discrete(name = "Location") +
+    ggtitle(title_str) + ylab("") +
+    theme_cowplot() +
+    theme(text = element_text(size = 18),
+          axis.text = element_text(size = 15))
+
+  if (!is.null(ci_lwr)) {
+    stopifnot(!is.null(ci_upr))
+    plt <- plt +
+      geom_ribbon(aes_string(ymin = ci_lwr, ymax = ci_upr, fill = fill),
+                  alpha = 0.2)
+  }
+  if (!is.na(yintercept)) {
+    plt <- plt +
+      geom_hline(yintercept = yintercept, lty = 2)
+  }
+
+  if (x == "date_lag") {
+    plt <- plt + xlab("Date (lagged 5 days)")
+  } else if (x == "date") {
+    plt <- plt + xlab("Date")
+  }
+  return(plt)
+}
+
+compare_plot <- function(dt, metric_lst) {
+  stopifnot(all(metric_lst %in% colnames(dt)))
+  xlim_max <- max(dt$date)
+  xlim_min <- min(dt$date_lag)
+
+  plt_lst <- list()
+  # plots where we need CI
+  for (met in metric_lst) {
+    plt_params <- switch(met,
+      "rt" = list(x = "date_lag", y = met, ci_lwr = "rt_lower",
+                  ci_upr = "rt_upper", yintercept = 1),
+      "case_rate" = list(x = "date", y = met, ci_lwr = "case_lower",
+                          ci_upr = "case_upper"),
+      "death_rate" = list(x = "date", y = met, ci_lwr = "death_lower",
+                          ci_upr = "death_upper"),
+      list(x = "date", y = met)
+    )
+    plt_params$metric_str <- switch(met,
+      "rt" = "Rt",
+      "case_rate" = "Daily New Cases per Million",
+      "death_rate" = "Daily New Deaths per Million",
+      "positiveIncrease" = "Daily New Cases",
+      "deathIncrease" = "Daily New Deaths",
+      "positive_percapita" = "Total Cases per Million",
+      "death_percapita" = "Total Deaths per Million",
+      "positive" = "Total Cases",
+      "death" = "Total Deaths",
+      "metric")
+
+    call_lst <- c(list(dt = dt), plt_params)
+    plt_lst[[met]] <- do.call(compare_plt_helper, call_lst) +
+        xlim(xlim_min, xlim_max)
+  }
+  return(plt_lst)
+}
 
 ########################################################################
 ## Define UI
@@ -460,14 +527,22 @@ ui <- fluidPage(
           selectizeInput("compare_sel_countries", label = "Countries",
                          choices = place_choices$country,
                          multiple = TRUE),
-          selectInput("compare_metric", "Metric:",
-                      choices = list("Rt" = "rt",
-                                     "New cases/day" = "case",
-                                     "New deaths/day" = "death")),
+          checkboxGroupInput("compare_metric",
+                             label = "Select metrics to compare",
+                             choices = list("Rt" = "rt",
+                                            "Daily new cases per million" = "case_rate",
+                                            "Daily new deaths per million" = "death_rate",
+                                            "Daily new cases" = "positiveIncrease",
+                                            "Daily new deaths" = "deathIncrease",
+                                            "Total cases per million" = "positive_percapita",
+                                            "Total deaths per million" = "death_percapita",
+                                            "Total cases" = "positive",
+                                            "Total deaths" = "death"),
+                             selected = c("rt", "case_rate", "death_rate")),
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
-          plotOutput("compare_plt_out", height = "1500px", width = "100%")
+          uiOutput("compare_plt_ui")
         )
       ) # end of sideBarLayout
     ), # end of tabPanel
@@ -689,7 +764,7 @@ server <- function(input, output, session) {
   ########################################################################
 
   # get data to plot for Rt comparison
-  plt_dat_compare <- eventReactive(input$compare_submit, {
+  compare_plt_data <- eventReactive(input$compare_submit, {
     # get all the UIDs in a data frame and join them with rt long to select
     selected_states <- input$compare_sel_states
     selected_counties <- input$compare_sel_counties
@@ -698,7 +773,7 @@ server <- function(input, output, session) {
       UID = as.double(c(selected_states, selected_counties, selected_countries))
     )
 
-    req(nrow(selected_uids) > 0)
+    validate(need(nrow(selected_uids) > 0, "Please select some locations."))
 
     # inner join
     rt_long_all[selected_uids, on = "UID", nomatch = NULL]
@@ -706,55 +781,27 @@ server <- function(input, output, session) {
 
   # generate the plot of Rt comparisons after user hits submit
   output$compare_plt_out <- renderPlot({
-    cur_dat <- plt_dat_compare()
+    cur_dat <- compare_plt_data()
     validate(need(nrow(cur_dat) > 0,
                   "Insufficient data for selected locations."))
-    validate(need(input$compare_metric, "Please select a metric."))
-    xlim_max <- max(cur_dat$date)
-    xlim_min <- min(cur_dat$date_lag)
 
-    suppressWarnings({
-      rt_plt <- cur_dat %>%
-        ggplot(aes(x = date_lag, y = Rt_plot, color = dispID, fill = dispID)) +
-        geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr), alpha = 0.2) +
-        geom_line() + geom_point() + xlab("Date (lagged 5 days)") + ylab("Rt") +
-        ggtitle("Comparison of Rt") + ylim(0, ylim_max) +
-        xlim(xlim_min, xlim_max) +
-        geom_hline(yintercept = 1, lty = 2) +
-        scale_color_discrete(name = "Location") +
-        scale_fill_discrete(name = "Location") +
-        theme_cowplot() +
-        theme(text = element_text(size = 18),
-              axis.text = element_text(size = 15))
+    # use isolate() to avoid dependency on input$compare_metric; dependency is
+    # handled by compare_plt_data() when user hits submit.
+    metric_lst_touse <- isolate(input$compare_metric)
 
-      newcases_plt <- cur_dat %>%
-        ggplot(aes(x = date, y = positiveIncrease, color = dispID)) +
-        geom_line() + geom_point() + xlab("Date") + ylab("New Cases") +
-        ggtitle("Comparison of Daily New Cases") +
-        xlim(xlim_min, xlim_max) +
-        scale_color_discrete(name = "Location") +
-        scale_fill_discrete(name = "Location") +
-        theme_cowplot() +
-        coord_cartesian(ylim = c(0, NA)) +
-        theme(text = element_text(size = 18),
-              axis.text = element_text(size = 15))
+    plt_lst <- compare_plot(cur_dat, metric_lst = metric_lst_touse)
+    plot_grid(plotlist = plt_lst, ncol = 1, align = "v", axis = "l")
+  })
 
-      newcases_percapita_plt <- cur_dat %>%
-        ggplot(aes(x = date, y = positiveIncr_percapita, color = dispID)) +
-        geom_line() + geom_point() + xlab("Date") + ylab("") +
-        ggtitle("Comparison of New Cases per Million Population") +
-        xlim(xlim_min, xlim_max) +
-        scale_color_discrete(name = "Location") +
-        scale_fill_discrete(name = "Location") +
-        theme_cowplot() +
-        coord_cartesian(ylim = c(0, NA)) +
-        theme(text = element_text(size = 18),
-              axis.text = element_text(size = 15))
+  output$compare_plt_ui <- renderUI({
+    # need to take a dependency on compare_plt_data to trigger UI re-draw on
+    # submit
+    cur_dat <- compare_plt_data()
+    metric_lst <- isolate(input$compare_metric)
+    n_metrics <- length(metric_lst)
+    plt_height <- 300 * max(1, n_metrics)
 
-      plt_out <- plot_grid(rt_plt, newcases_plt, newcases_percapita_plt,
-                           ncol = 1, align = "v", axis = "l")
-      plt_out
-    })
+    plotOutput("compare_plt_out", height = plt_height)
   })
 
   ########################################################################
