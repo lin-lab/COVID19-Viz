@@ -13,118 +13,39 @@ library(rgeos)
 library(purrr)
 library(ggplot2)
 
+START_DATE <- ymd("2020-04-01")
 
-#' Calculate loess curve for Rt by date_lag.
-Rt_loess <- function(dat) {
-  if (nrow(dat) < 3) {
-    ret_df <- data.table(Rt_loess_fit = NA_real_,
-                         Rt_loess_lwr = NA_real_,
-                         Rt_loess_upr = NA_real_,
-                         rowid = dat$rowid)
-  } else {
-    loess_fit <- loess(Rt_plot ~ as.numeric(date_lag), data = dat)
-    pred_obj <- predict(loess_fit, dat, se = TRUE)
-    tstar <- qt(0.975, pred_obj$df)
-    ret_df <- data.table(Rt_loess_fit = pred_obj$fit,
-                        Rt_loess_lwr = pred_obj$fit - tstar * pred_obj$se.fit,
-                        Rt_loess_upr = pred_obj$fit + tstar * pred_obj$se.fit,
-                        rowid = dat$rowid)
-  }
-  return(ret_df)
-}
+reformat_data <- function(dt, start_date) {
+  dt[, date := ymd(date)]
+  dt[, date_lag := ymd(date_lag)]
 
-#' Lag, subset, and modify the Rt data.
-#'
-#' This function lags the Rt by a specified number of days. Then, we filter
-#' out Rts outside the date range. We also set Rt to be NA on days when there
-#' are not enough total cases or when the average number of new cases in the
-#' past few days is below a certain threshold. We do this for each location in
-#' the data. We also compute the per capita case and death rate (per 10000)
-#' and the per capita new cases and new deaths (per million)
-#'
-#' @param dt Input data frame. Assumed to have columns date, positiveIncrease,
-#' positive, mean_rt, ci_upper, ci_lower.
-#' @param group_var Variable that indicates each location.
-#' @param nlag Number of days to lag Rt by.
-#' @param window_size Number of days to average the new cases over. Note that
-#' the window is right-aligned, e.g. if the date is June 7, we will take the
-#' average from June 1 to June 7.
-#' @param pos_cutoff Set Rt to NA if the number of total cases on any particular
-#' day does not exceed this number.
-#' @param posincr_cutoff Set Rt to NA if the average number of new cases on
-#' the past window_size days does not exceed this number.
-#' @param start_date Take times after this start date.
-#' @param end_date Take times before this end date.
-#'
-lag_subset_mod <- function(dt, group_var = "UID", nlag = 5,
-                           window_size = 7, pos_cutoff = 50,
-                           posincr_cutoff = 10,
-                           start_date = ymd("2020-03-19"),
-                           end_date = today()) {
-  stopifnot(start_date <= end_date)
-  dt[positiveIncrease <= 0, posIncr_trunc := 0]
-  dt[positiveIncrease > 0, posIncr_trunc := positiveIncrease]
-  dt[, date_lag := date - ddays(nlag)]
-  dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
-                                    align = "right", algo = "exact"),
-      by = group_var]
-  dt[, positive_7day := frollmean(positiveIncrease, n = 7,
-                                  align = "right", algo = "exact"),
-      by = group_var]
-  dt[, positive_percapita := 1e6 * positive/ population]
+  scale_cols <- c("case_rate", "case_lower", "case_upper", "death_rate",
+                  "death_lower", "death_upper")
+  dt[, (scale_cols) := lapply(.SD, function(x) { x * 1e6 }),
+     .SDcols = scale_cols]
+  dt[, positive_percapita := 1e6 * positive / population]
   dt[, death_percapita := 1e6 * death / population]
-  dt[, positiveIncr_percapita := 1e6 * positiveIncrease / population]
-  dt[, deathIncr_percapita := 1e6 * deathIncrease / population]
-
-  dt_subset <- dt[date >= start_date & date <= end_date & !is.na(rolling_posIncr)]
-  dt_subset[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
-      `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
-  dt_subset[positive >= pos_cutoff & rolling_posIncr < posincr_cutoff,
-      Rt_plot := -88]
-  dt_subset[positive < pos_cutoff, Rt_plot := -888]
-  dt_subset[, rowid := rep(1:.N)]
-
-  loess_dt <- dt_subset[Rt_plot > 0, Rt_loess(.SD), by = group_var]
-  ret <- merge(dt_subset,
-               loess_dt[, .(Rt_loess_fit, Rt_loess_lwr, Rt_loess_upr, rowid)] ,
-               by = "rowid", all.x = TRUE, all.y = FALSE)
-  ret[, rowid := NULL]
-
+  dt[, positiveIncrease_percapita := 1e6 * positiveIncrease / population]
+  dt[, deathIncrease_percapita := 1e6 * deathIncrease / population]
+  ret <- dt[date >= start_date]
   return(ret)
 }
 
-#end_date <- ymd("2020-06-06")
-end_date <- today()
 
 ########################################################################
 ## State-level data
 ########################################################################
 
-state_rt_long_orig <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
-  data.table()
-
-state_rt_long <- lag_subset_mod(state_rt_long_orig, "stateName",
-                                end_date = end_date)
-
-state_rt_long[date >= end_date - ddays(2),
-              .(stateName, positive, population, positive_percapita)][
-              order(positive_percapita, decreasing = TRUE)]
-
-
-# check that we calculated the rolling mean correctly
-state_check <- state_rt_long[stateName == "New Jersey", ]
-stopifnot(all.equal(state_check$rolling_posIncr[7],
-                    mean(state_check$posIncr_trunc[1:7])))
-stopifnot(all.equal(state_check$rolling_posIncr[8],
-                    mean(state_check$posIncr_trunc[2:8])))
-stopifnot(all.equal(state_check$rolling_posIncr[10],
-                    mean(state_check$posIncr_trunc[4:10])))
+state_rt_long <- fread("raw_data/jhu_state_rt_case_death_rate.csv") %>%
+  reformat_data(START_DATE)
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
-  select(stateName, date_lag, Rt_plot, Rt_upr, Rt_lwr) %>%
-  pivot_wider(id_cols = c(stateName), names_from = date_lag,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr))
+  select(UID, stateName, date, starts_with("rt"), starts_with("case_"),
+         starts_with("death_")) %>%
+  pivot_wider(id_cols = c(UID, stateName), names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_")))
 
 state_maps <- ne_states(country = "united states of america",
                         returnclass = "sf")
@@ -144,7 +65,7 @@ unjoined_states <- state_rt_long %>%
 #'
 make_points <- function(df, name_col, crs) {
   point_lst <- list()
-  for (i in 1:nrow(df)) {
+  for (i in seq_len(nrow(df))) {
     long_cur <- df$Long_[i]
     lat_cur <- df$Lat[i]
     point_lst[[i]] <- st_point(c(long_cur, lat_cur))
@@ -156,25 +77,25 @@ make_points <- function(df, name_col, crs) {
   return(new_points)
 }
 
-new_state_points <- make_points(unjoined_states, "stateName", st_crs(state_maps))
+new_state_points <- make_points(unjoined_states, "stateName",
+                                st_crs(state_maps))
 
 state_merged <- state_maps %>%
   select(name, geometry, fips) %>%
   mutate(UID = as.integer(paste0("840000", substring(fips, 3)))) %>%
   select(-fips) %>%
   rbind(new_state_points) %>%
-  merge(state_rt_tomerge, by.x = "name", by.y = "stateName", all.x = FALSE) %>%
+  merge(state_rt_tomerge, by = "UID", all.x = FALSE) %>%
   mutate(resolution = "state_USA", dispID = paste0(name, ", USA")) %>%
-  select(UID, dispID, resolution, starts_with("Rt_"))
+  select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
+         starts_with("death_"))
 
-exported_states <-
-  with(state_merged,
-       data.table(UID = UID, stateName = substr(dispID, 1, nchar(dispID) - 5)))
-state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
-  mutate(resolution = "state_USA",
-         dispID = paste0(stateName, ", USA")) %>%
-  select(UID, dispID, date, resolution, date_lag,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+exported_states <- with(state_merged, data.table(UID = UID))
+state_rt_long_export <- state_rt_long[exported_states, on = "UID"][,
+    `:=` (resolution = "state_USA",
+          dispID = paste0(stateName, ", USA"))]
+# drop unneeded columns
+state_rt_long_export[, `:=` (Lat = NULL, Long_ = NULL, stateName = NULL)]
 
 ########################################################################
 ## County-level data
@@ -182,12 +103,10 @@ state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
 
 county_maps <- us_counties() %>%
   mutate(UID = as.integer(paste0("840", geoid)))
-county_rt_long_orig <- read_tsv("raw_data/jhu_county_rt.tsv",
-                                guess_max = 10000) %>%
-  data.table()
 
-county_rt_long <- lag_subset_mod(county_rt_long_orig, end_date = end_date)
-stopifnot(all(county_rt_long$Rt_upr >= county_rt_long$Rt_lwr, na.rm = TRUE))
+county_rt_long <- fread("raw_data/jhu_county_rt_case_death_rate.csv",
+                        verbose = TRUE) %>%
+  reformat_data(START_DATE)
 
 # make combined key for county rt long
 county_rt_long[, Combined_Key := paste(county, stateName, sep = ", ")]
@@ -274,11 +193,12 @@ county_rt_long <- county_rt_long[!(county %in% utah_counties_remove &
                                    stateName == "Utah")]
 
 county_rt_wide <- county_rt_long %>%
-  select(county, stateName, UID, FIPS, date_lag, Rt_plot, Rt_upr, Rt_lwr,
-         Combined_Key) %>%
+  select(county, stateName, UID, FIPS, date, starts_with("rt"),
+         starts_with("case_"), starts_with("death_"), Combined_Key) %>%
   pivot_wider(id_cols = c(county, stateName, UID, FIPS, Combined_Key),
-              names_from = date_lag,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr))
+              names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_")))
 
 county_maps_new <- county_maps %>%
   select(UID, geometry) %>%
@@ -297,35 +217,36 @@ county_merged <- county_maps_new %>%
   mutate(resolution = "county") %>%
   merge(county_rt_wide, by = "UID", all = FALSE) %>%
   select(-county, -stateName, -FIPS) %>%
-  select(UID, dispID = Combined_Key, resolution, starts_with("Rt_"))
+  select(UID, dispID = Combined_Key, resolution, starts_with("rt"),
+         starts_with("case_"), starts_with("death_"))
 
 exported_counties <- data.table(UID = county_merged$UID)
-county_rt_long_export <- county_rt_long[exported_counties, on = "UID"] %>%
-  mutate(resolution = "county") %>%
-  select(UID, dispID = Combined_Key, date, date_lag, resolution,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+county_rt_long_export <- county_rt_long[exported_counties, on = "UID"]
+county_rt_long_export[, resolution := "county"]
+# drop unneeded columns
+county_rt_long_export[, `:=` (FIPS = NULL, stateName = NULL, county = NULL)]
+setnames(county_rt_long_export, old = "Combined_Key", new = "dispID")
 
 ########################################################################
 ## International data
 ########################################################################
 
-global_rt_long_orig <- fread("raw_data/jhu_global_rt.tsv", fill = TRUE)
-global_rt_long_orig[Country_Region == "Canada",]
-global_rt_long_orig[, date := ymd(date)]
+global_rt_long <- fread("raw_data/jhu_global_rt_case_death_rate.csv") %>%
+  reformat_data(START_DATE)
+
+global_rt_long[Country_Region == "Canada", ]
 
 # fix a typo
-global_rt_long_orig[UID == 12406,
-                    Combined_Key := "Northwest Territories, Canada"]
-
-global_rt_long <- lag_subset_mod(global_rt_long_orig, end_date = end_date)
-stopifnot(all(global_rt_long$Rt_upr >= global_rt_long$Rt_lwr, na.rm = TRUE))
+global_rt_long[UID == 12406,
+               Combined_Key := "Northwest Territories, Canada"]
 
 global_rt_wide <- global_rt_long %>%
-  select(-population, -interval_start, -FIPS, -Admin2, -positiveIncrease,
-         -deathIncrease, -positive, -positiveIncrease, -death) %>%
-  pivot_wider(id_cols = c(UID, Province_State:Combined_Key),
-              names_from = date_lag,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr)) %>%
+  select(UID, Province_State, Country_Region, Lat, Long_, Combined_Key, date,
+         starts_with("rt"), starts_with("case_"), starts_with("death_")) %>%
+  pivot_wider(id_cols = UID:Combined_Key,
+              names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_"))) %>%
   data.table()
 stopifnot(uniqueN(global_rt_wide$UID) == nrow(global_rt_wide))
 
@@ -333,7 +254,7 @@ stopifnot(uniqueN(global_rt_wide$UID) == nrow(global_rt_wide))
 ## Take care of provinces
 ########################################################################
 countries_w_provinces <- c("Canada", "Australia", "China")
-province_uids <- global_rt_wide[!is.na(Province_State) &
+province_uids <- global_rt_wide[Province_State != "" &
                                  Country_Region %in% countries_w_provinces,
                                 UID]
 
@@ -345,7 +266,7 @@ provinces_sf_orig <- ne_states(geounit = c("Canada", "Australia", "China"),
 x <- provinces_sf_orig %>%
   filter(admin == "China")
 x$name_en
-x[19,]
+x[19, ]
 sort(x$name_en)
 
 x <- provinces_sf_orig %>%
@@ -362,9 +283,9 @@ remove_provinces <- c("Nunavut", "Jervis Bay Territory",
 
 provinces_sf <- provinces_sf_orig %>%
   filter(!(name %in% remove_provinces)) %>%
-  select(name, admin, woe_label, geometry) %>%
+  select(name, admin, name_en, geometry) %>%
   group_by(admin) %>%
-  arrange(name) %>%
+  arrange(name_en) %>%
   mutate(
     province_id = sprintf("%02d", 1:n()),
     country_id = case_when(
@@ -379,7 +300,7 @@ provinces_sf <- provinces_sf_orig %>%
   st_sf()
 
 # Add Macau and Hong Kong
-macau_hk <- global_rt_wide[Province_State %in% c("Macau SAR", "Hong Kong SAR")]
+macau_hk <- global_rt_wide[Province_State %in% c("Macau", "Hong Kong")]
 stopifnot(nrow(macau_hk) == 2)
 
 macau_hk_sf <- make_points(macau_hk, "Combined_Key", st_crs(provinces_sf))
@@ -403,7 +324,8 @@ provinces_merged <- provinces_sf_final %>%
     Country_Region == "Canada" ~ "state_Canada",
     Country_Region == "China" ~ "state_China",
     Country_Region == "Australia" ~ "state_Australia")) %>%
-  select(UID, dispID, resolution, starts_with("Rt_"))
+  select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
+         starts_with("death_"))
 
 exported_provinces <- data.table(UID = provinces_merged$UID)
 provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
@@ -411,8 +333,10 @@ provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
     Country_Region == "Canada" ~ "state_Canada",
     Country_Region == "China" ~ "state_China",
     Country_Region == "Australia" ~ "state_Australia")) %>%
-  select(UID, dispID = Combined_Key, date, date_lag, resolution,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
+         starts_with("rt"), starts_with("positive"), starts_with("death"),
+         starts_with("case")) %>%
+  data.table()
 
 ########################################################################
 ## International countries
@@ -488,9 +412,9 @@ new_points <- make_points(unjoined_latlong, "Combined_Key", st_crs(sf_tiny_use))
 sf_world <- rbind(sf_world_temp, new_points) %>%
   select(UID, geometry)
 
-countries_w_states_provinces <- c("US", "Canada", "Australia", "China")
 world_merged <- countries_wide %>%
-  select(UID, Combined_Key, starts_with("Rt_")) %>%
+  select(UID, Combined_Key, starts_with("rt_"), starts_with("case_"),
+         starts_with("death_")) %>%
   mutate(resolution = "country") %>%
   merge(sf_world, ., by = "UID", all = FALSE) %>%
   rename(dispID = Combined_Key)
@@ -498,8 +422,10 @@ world_merged <- countries_wide %>%
 exported_countries <- data.table(UID = world_merged$UID)
 world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
   mutate(resolution = "country") %>%
-  select(UID, dispID = Combined_Key, date, date_lag, resolution,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
+         starts_with("rt"), starts_with("positive"), starts_with("death"),
+         starts_with("case")) %>%
+  data.table()
 
 ########################################################################
 ## Get choices for names
@@ -507,8 +433,7 @@ world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
 
 sf_all <- rbind(world_merged, provinces_merged, state_merged, county_merged)
 rt_long_all <- rbind(state_rt_long_export, county_rt_long_export,
-                     provinces_rt_long_export, world_rt_long_export) %>%
-  as_tibble()
+                     provinces_rt_long_export, world_rt_long_export)
 
 state_province_names1 <- sf_all %>%
   filter(startsWith(resolution, "state"),
@@ -593,8 +518,8 @@ usa_state_counties <- sf_all %>%
   filter(resolution == "state_USA", UID > 12499) %>%
   select(UID, dispID, geometry)
 
-state_centers <- map2(usa_state_counties$geometry, usa_state_counties$UID,
-                      get_lnglat)
+state_centers <- purrr::map2(usa_state_counties$geometry, usa_state_counties$UID,
+                             get_lnglat)
 names(state_centers) <- usa_state_counties$UID
 
 ########################################################################
@@ -605,4 +530,4 @@ saveRDS(sf_all, "clean_data/sf_all.rds")
 saveRDS(rt_long_all, "clean_data/rt_long_all.rds")
 saveRDS(names_list, "clean_data/names_list.rds")
 saveRDS(state_centers, "clean_data/state_centers.rds")
-write_csv(rt_long_all, "clean_data/rt_table_export.csv")
+fwrite(rt_long_all, "clean_data/rt_table_export.csv")
