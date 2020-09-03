@@ -17,6 +17,7 @@ START_DATE <- ymd("2020-04-01")
 
 reformat_data <- function(dt, start_date) {
   dt[, date := ymd(date)]
+  dt[, date_lag := ymd(date_lag)]
 
   scale_cols <- c("case_rate", "case_lower", "case_upper", "death_rate",
                   "death_lower", "death_upper")
