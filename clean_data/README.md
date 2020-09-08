@@ -23,6 +23,9 @@ The `rt_table.csv` file contains all the information shown on the tables on
 the website as well as some additional columns. If you wish to download the
 tables, you should download this file.
 
+Update Sept 8, 2020: This file is now stored on
+[Google Drive](https://drive.google.com/drive/folders/1wSvPExVscew_Wb6vEUHcGzyzs4fJ9mZX?usp=sharing)
+
 ### Description of Columns
 
 + `UID`: Unique location ID. Taken from JHU's [UID lookup
