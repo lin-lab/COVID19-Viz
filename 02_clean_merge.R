@@ -16,9 +16,6 @@ library(ggplot2)
 START_DATE <- ymd("2020-04-01")
 
 reformat_data <- function(dt, start_date) {
-  dt[, date := ymd(date)]
-  dt[, date_lag := ymd(date_lag)]
-
   scale_cols <- c("case_rate", "case_lower", "case_upper", "death_rate",
                   "death_lower", "death_upper")
   dt[, (scale_cols) := lapply(.SD, function(x) { x * 1e6 }),
@@ -36,7 +33,35 @@ reformat_data <- function(dt, start_date) {
 ## State-level data
 ########################################################################
 
-state_rt_long <- fread("raw_data/jhu_state_rt_case_death_rate.csv") %>%
+state_cols <- cols(
+  UID = col_double(),
+  stateName = col_character(),
+  date = col_date(format = "%Y-%m-%d"),
+  positiveIncrease = col_double(),
+  deathIncrease = col_double(),
+  positive = col_double(),
+  death = col_double(),
+  population = col_double(),
+  Lat = col_double(),
+  Long_ = col_double(),
+  Combined_Key = col_character(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  cases_lag = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+
+state_rt_long <- read_csv("raw_data/jhu_state_rt_case_death_rate.csv",
+                          col_types = state_cols) %>%
+  data.table() %>%
   reformat_data(START_DATE)
 
 # make wide format
@@ -104,8 +129,34 @@ state_rt_long_export[, `:=` (Lat = NULL, Long_ = NULL, stateName = NULL)]
 county_maps <- us_counties() %>%
   mutate(UID = as.integer(paste0("840", geoid)))
 
-county_rt_long <- fread("raw_data/jhu_county_rt_case_death_rate.csv",
-                        verbose = TRUE) %>%
+county_cols <- cols(
+  UID = col_double(),
+  county = col_character(),
+  stateName = col_character(),
+  date = col_date(format = "%Y-%m-%d"),
+  FIPS = col_double(),
+  positiveIncrease = col_integer(),
+  deathIncrease = col_integer(),
+  positive = col_integer(),
+  death = col_double(),
+  population = col_double(),
+  Combined_Key = col_character(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  cases_lag = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+county_rt_long <- read_csv("raw_data/jhu_county_rt_case_death_rate.csv",
+                           col_types = county_cols) %>%
+  data.table() %>%
   reformat_data(START_DATE)
 
 # make combined key for county rt long
@@ -231,7 +282,40 @@ setnames(county_rt_long_export, old = "Combined_Key", new = "dispID")
 ## International data
 ########################################################################
 
-global_rt_long <- fread("raw_data/jhu_global_rt_case_death_rate.csv") %>%
+global_cols <- cols(
+  UID = col_double(),
+  Province_State = col_character(),
+  Country_Region = col_character(),
+  positive = col_integer(),
+  date = col_date(format = "%Y-%m-%d"),
+  death = col_integer(),
+  positiveIncrease = col_integer(),
+  deathIncrease = col_integer(),
+  iso2 = col_character(),
+  iso3 = col_character(),
+  code3 = col_double(),
+  FIPS = col_integer(),
+  Admin2 = col_character(),
+  Lat = col_double(),
+  Long_ = col_double(),
+  Combined_Key = col_character(),
+  population = col_double(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  cases_lag = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+global_rt_long <- read_csv("raw_data/jhu_global_rt_case_death_rate.csv",
+                           col_types = global_cols) %>%
+  data.table() %>%
   reformat_data(START_DATE)
 
 global_rt_long[Country_Region == "Canada", ]
