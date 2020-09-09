@@ -117,8 +117,8 @@ state_merged <- state_maps %>%
 
 exported_states <- with(state_merged, data.table(UID = UID))
 state_rt_long_export <- state_rt_long[exported_states, on = "UID"][,
-    `:=` (resolution = "state_USA",
-          dispID = paste0(stateName, ", USA"))]
+    resolution := "state_USA"]
+setnames(state_rt_long_export, old = "Combined_Key", new = "dispID")
 # drop unneeded columns
 state_rt_long_export[, `:=` (Lat = NULL, Long_ = NULL, stateName = NULL)]
 
