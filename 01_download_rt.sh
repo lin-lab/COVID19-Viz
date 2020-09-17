@@ -13,3 +13,4 @@ fi
 wget -O ${out_dir}/jhu_county_${file_ending} ${base_url}/jhu_county_${file_ending}
 wget -O ${out_dir}/jhu_state_${file_ending} ${base_url}/jhu_state_${file_ending}
 wget -O ${out_dir}/jhu_global_${file_ending} ${base_url}/jhu_global_${file_ending}
+wget -O ${out_dir}/jhu_subnational_${file_ending} ${base_url}/jhu_subnational_${file_ending}

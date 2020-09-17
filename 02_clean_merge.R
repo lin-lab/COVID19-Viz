@@ -423,6 +423,45 @@ provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
   data.table()
 
 ########################################################################
+## Additional subnational data
+########################################################################
+subnat_cols <- cols(
+  UID = col_integer(),
+  positive = col_integer(),
+  death = col_integer(),
+  date = col_date(format = "%Y-%m-%d"),
+  Combined_Key = col_character(),
+  iso2 = col_character(),
+  iso3 = col_character(),
+  code3 = col_double(),
+  FIPS = col_logical(),
+  Admin2 = col_logical(),
+  Province_State = col_character(),
+  Country_Region = col_character(),
+  Lat = col_double(),
+  Long_ = col_double(),
+  population = col_integer(),
+  deathIncrease = col_integer(),
+  positiveIncrease = col_integer(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  cases_lag = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+subnat_rt_long <- read_csv("raw_data/jhu_subnational_rt_case_death_rate.csv",
+                           col_types = subnat_cols) %>%
+  data.table() %>%
+  reformat_data(START_DATE)
+
+########################################################################
 ## International countries
 ########################################################################
 
