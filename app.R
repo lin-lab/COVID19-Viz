@@ -267,7 +267,7 @@ click_plot <- function(plt_dat) {
   rt_plt <- plt_dat %>%
     ggplot(aes(x = date, y = rt, ymin = rt_lower, ymax = rt_upper)) +
     geom_ribbon(fill = "#9e9e9e") + geom_line() +
-    coord_cartesian(ylim = c(0, ymax_rt)) +
+    #coord_cartesian(ylim = c(0, ymax_rt)) +
     geom_hline(yintercept = 1, lty = 2) +
     xlab("Date") + ylab("") + ggtitle(rt_plt_title) +
     theme_cowplot() +
@@ -286,7 +286,7 @@ click_plot <- function(plt_dat) {
     geom_line(aes(y = positiveIncrease_percapita, linetype = "Unsmoothed")) +
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
-    coord_cartesian(ylim = c(0, ymax_newcases)) +
+    #coord_cartesian(ylim = c(1, ymax_newcases)) +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
@@ -312,7 +312,7 @@ click_plot <- function(plt_dat) {
 
 #' Preprocess data frame to be displayed by DT.
 munge_for_dt <- function(df) {
-  ret <- df[, .(dispID, positive, positive_percapita, death, death_percapita)]
+  ret <- head(df[, .(dispID, positive, positive_percapita, death, death_percapita)])
   # TODO: add other stuff here
   return(ret)
 }
