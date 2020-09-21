@@ -12,6 +12,7 @@ library(rnaturalearth)
 library(rgeos)
 library(purrr)
 library(ggplot2)
+library(stringi)
 
 START_DATE <- ymd("2020-04-01")
 
@@ -458,8 +459,89 @@ subnat_cols <- cols(
 
 subnat_rt_long <- read_csv("raw_data/jhu_subnational_rt_case_death_rate.csv",
                            col_types = subnat_cols) %>%
+  # some plcae was duplicated a lot on a single day
+  distinct() %>%
   data.table() %>%
   reformat_data(START_DATE)
+
+stopifnot(identical(anyDuplicated(subnat_rt_long), 0L))
+
+subnat_rt_wide <- subnat_rt_long %>%
+  select(UID, Province_State, Country_Region, Lat, Long_, Combined_Key, date,
+         starts_with("rt"), starts_with("case_"), starts_with("death_")) %>%
+  pivot_wider(id_cols = UID:Combined_Key,
+              names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_"))) %>%
+  data.table()
+
+uniq_countries <- unique(subnat_rt_long$Country_Region)
+non_uk <- uniq_countries[uniq_countries != "United Kingdom"]
+
+# be aware of spaces. Spaces after means this is a prefix, spaces before means
+# it's a postfix
+subnat_patt <- c("Province of " = "", "Community of " = "", " Province" = "",
+                 " Department" = "", " Prefecture" = "", " Region" = "",
+                 " County" = "", "Republic of " = "")
+subnat_sf_orig <- ne_states(country = non_uk, returnclass = "sf")
+uk_sf <- ne_countries(country = "united kingdom", type = "map_units",
+                      returnclass = "sf") %>%
+  mutate(Combined_Key = paste0(name_long, ", United Kingdom"))
+
+sf_lst <- list()
+for (country in non_uk) {
+  country_sf <- subnat_sf_orig %>%
+    filter(admin == country)
+  if (country == "Spain" || country == "Italy") {
+    country_sf <- country_sf %>%
+      select(region) %>%
+      group_by(region) %>%
+      summarize(geometry = st_union(geometry)) %>%
+      rename(name_en = region) %>%
+      mutate(admin = country)
+  }
+  if (country == "Germany" || country == "Netherlands" || country == "Mexico") {
+    tmp <- country_sf %>%
+      mutate(name_noacc = stri_trans_general(name, "latin-ascii"))
+  } else {
+    tmp <- country_sf %>%
+      mutate(name_noacc = stri_trans_general(name_en, "latin-ascii"))
+  }
+  final_sf <- tmp %>%
+    mutate(name_clean = str_replace_all(name_noacc, subnat_patt),
+           Combined_Key = paste0(name_clean, ", ", admin)) %>%
+    select(Combined_Key, geometry)
+  sf_lst[[country]] <- final_sf
+}
+sf_lst[["united kingdom"]] <- select(uk_sf, Combined_Key, geometry)
+
+subnat_sf <- do.call(rbind, sf_lst)
+rownames(subnat_sf) <- NULL
+
+subnat_rt_test <- subnat_rt_wide %>%
+  select(Combined_Key, UID, Province_State, Country_Region)
+
+subnat_rt_test %>%
+  anti_join(subnat_sf, by = "Combined_Key") %>%
+  arrange(Country_Region) %>%
+  write_csv("country_no_maps.csv")
+
+subnat_sf %>%
+  select(Combined_Key) %>%
+  st_drop_geometry() %>%
+  anti_join(subnat_rt_test, by = "Combined_Key") %>%
+  write_csv("maps_no_country.csv")
+
+subnat_rt_wide$Province_State
+
+for (country in uniq_countries) {
+  if (country == "United Kingdom") {
+    next
+  }
+  maps <- ne_states(country = country, returnclass = "sf")
+}
+
+x <- ne_states(geounit = "Brazil", returnclass = "sf")
 
 ########################################################################
 ## International countries
