@@ -8,6 +8,10 @@ then
   mkdir -v ${out_dir}
 fi
 
-wget -O ${out_dir}/jhu_county_rt.tsv ${base_url}/jhu_county_rt.tsv
-wget -O ${out_dir}/jhu_state_rt.tsv ${base_url}/jhu_state_rt.tsv
-wget -O ${out_dir}/jhu_global_rt.tsv ${base_url}/jhu_global_rt.tsv
+for ext in county state global
+do
+    filename=jhu_${ext}_rt.tsv
+    out_zip=${out_dir}/${filename}.zip
+    url=${base_url}/${filename}.zip
+    wget --output-document=$out_zip $url && unzip -f $out_zip && rm -f $out_zip
+done
