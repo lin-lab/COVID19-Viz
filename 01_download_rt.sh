@@ -13,5 +13,5 @@ do
     filename=jhu_${ext}_rt.tsv
     out_zip=${out_dir}/${filename}.zip
     url=${base_url}/${filename}.zip
-    wget --output-document=$out_zip $url && unzip -o -f $out_zip && rm -f $out_zip
+    wget --output-document=$out_zip $url && unzip -o $out_zip -d ${out_dir} && rm -f $out_zip
 done
