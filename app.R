@@ -24,16 +24,17 @@ library(dplyr)
 
 # shape file: wide data that has 1 row per location with all Rts, Rt CI's, and
 # shapes
-sf_all <- readRDS("clean_data/sf_all.rds")
+base_url <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files"
+sf_all <- readRDS(url(sprintf("%s/sf_all.rds", base_url)))
 
 # long data frame of Rts
-rt_long_all <- readRDS("clean_data/rt_long_all.rds")
+rt_long_all <- readRDS(url(sprintf("%s/rt_long_all.rds", base_url)))
 
 # choices for each place
-place_choices <- readRDS("clean_data/names_list.rds")
+place_choices <- readRDS(url(sprintf("%s/names_list.rds", base_url)))
 
 # state centers
-state_centers <- readRDS("clean_data/state_centers.rds")
+state_centers <- readRDS(url(sprintf("%s/state_centers.rds", base_url)))
 
 # map state UIDs to place name
 state_uid_to_place <- as.list(names(place_choices$us_state))

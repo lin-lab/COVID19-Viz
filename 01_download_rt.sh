@@ -1,6 +1,6 @@
 #!/bin/bash
 
-base_url=https://raw.githubusercontent.com/lin-lab/COVID19-Rt/master/initial_estimates/
+base_url=https://hsph-covid-study.s3.us-east-2.amazonaws.com/Rt-values
 out_dir=raw_data
 
 if [ ! -d ${out_dir} ]
