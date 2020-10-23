@@ -5,6 +5,7 @@
 *.txt
 *.tsv
 *.csv
-.rds
+*.zip
+*.rds
 packrat/lib*/
 packrat/src/
