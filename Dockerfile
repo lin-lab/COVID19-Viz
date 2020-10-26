@@ -1,1 +1,1 @@
-FROM hmdc/heroku-docker-r:3.6.1-shiny
+FROM hmdc/heroku-docker-r:4.0.2-shiny
