@@ -5,7 +5,7 @@ data from the Johns Hopkins University Center for Systems Science and
 Engineering (JHU-CSSE) [Coronavirus Resource
 Center](https://github.com/CSSEGISandData/COVID-19). Rt calculated using
 [EpiEstim](https://cran.r-project.org/package=EpiEstim) ([Cori, A., et al.,
-2013](https://doi.org/10.1093/aje/kwt133).
+2013](https://doi.org/10.1093/aje/kwt133)).
 
 ## How to Run the app
 
