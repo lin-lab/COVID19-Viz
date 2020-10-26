@@ -9,3 +9,5 @@
 *.rds
 packrat/lib*/
 packrat/src/
+tags
+Session.vim
