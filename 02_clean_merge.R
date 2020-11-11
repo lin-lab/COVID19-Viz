@@ -457,12 +457,15 @@ world_countries_temp <- dplyr::select(sf_world_orig, iso_n3, name) %>%
   st_drop_geometry()
 tiny_countries_temp <- dplyr::select(sf_tiny_countries, iso_n3, name) %>%
   st_drop_geometry()
-inner_join(world_countries_temp, tiny_countries_temp, by = "iso_n3")
+tiny_joined <- inner_join(world_countries_temp, tiny_countries_temp,
+                          by = "iso_n3")
 
-# remove Trinidad and Tobago and Brunei from tiny countries
-remove_iso_n3 <- c("096", "780")
+# remove tiny countries that are repeated in non-tiny countries
+remove_tiny_iso <- tiny_joined %>%
+  filter(!is.na(iso_n3)) %>%
+  pull(iso_n3)
 sf_tiny_use <- sf_tiny_countries %>%
-  filter(!(iso_n3 %in% remove_iso_n3)) %>%
+  filter(!(iso_n3 %in% remove_tiny_iso)) %>%
   mutate(UID = as.integer(iso_n3)) %>%
   select(UID, name, geometry)
 
