@@ -518,6 +518,67 @@ sf_lst[["united kingdom"]] <- select(uk_sf, Combined_Key, geometry)
 subnat_sf <- do.call(rbind, sf_lst)
 rownames(subnat_sf) <- NULL
 
+#relabel 45 subnational units to align rt/map dfs
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Federal District, Brazil"] ="Distrito Federal, Brazil"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bio Bio, Chile"] ="Biobio, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Khmelnytsky Oblast, Ukraine"] ="Khmelnytskyi Oblast, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Zaporizhzhya Oblast, Ukraine"] ="Zaporizhia Oblast, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sodermanland, Sweden"] ="Sormland, Sweden"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Islamabad Capital Territory, Pakistan"] ="Islamabad, Pakistan"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Azad Kashmir, Pakistan"] ="Azad Jammu and Kashmir, Pakistan"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tumbes region, Peru"] ="Tumbes, Peru"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Canary Is., Spain"] ="Canarias, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Andalucia, Spain"] ="Andalusia, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Islas Baleares, Spain"] ="Baleares, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Foral de Navarra, Spain"] ="Navarra, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Castilla-La Mancha, Spain"] ="Castilla - La Mancha, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Cataluna, Spain"] ="Catalonia, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Valenciana, Spain"] ="C. Valenciana, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Jamtland, Sweden"] ="Jamtland Harjedalen, Sweden"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Archipelago of Saint Andrews, Colombia"] ="San Andres y Providencia, Colombia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Magallanes y la Antartica Chilena, Chile"] ="Magallanes, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bogota, Colombia"] ="Capital District, Colombia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sicily, Italy"] ="Sicilia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Santiago Metropolitan, Chile"] ="Metropolitana, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Libertador General Bernardo O'Higgins, Chile"] ="OHiggins, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Apulia, Italy"] ="Puglia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Friuli-Venezia Giulia, Italy"] ="Friuli Venezia Giulia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Trentino-Alto Adige, Italy"] ="P.A. Trento, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Distrito Federal, Mexico"] ="Ciudad de Mexico, Mexico"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Dagestan, Russia"] ="Dagestan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Oryol Oblast, Russia"] ="Orel Oblast, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sakha Republic, Russia"] ="Sakha (Yakutiya) Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Kalmykia, Russia"] ="Kalmykia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bashkortostan, Russia"] ="Bashkortostan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Mordovia, Russia"] ="Mordovia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Ingushetia, Russia"] ="Ingushetia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Karelia, Russia"] ="Karelia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Buryatia, Russia"] ="Buryatia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Jewish Autonomous Oblast, Russia"] ="Jewish Autonomous Okrug, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Khakassia, Russia"] ="Khakassia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tatarstan, Russia"] ="Tatarstan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Chuvash Republic, Russia"] ="Chuvashia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="North Ossetia-Alania, Russia"] ="North Ossetia - Alania Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Kabardino-Balkar Republic, Russia"] ="Kabardino-Balkarian Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tuva Republic, Russia"] ="Tyva Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Adygea, Russia"] ="Adygea Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Autonomous Crimea, Russia"] ="Crimea Republic*, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sevastopol, Russia"] ="Sevastopol*, Ukraine"
+
+subnat_merged <- subnat_rt_wide %>%
+  merge(subnat_sf, by = "Combined_Key", all.x = FALSE) %>%
+  mutate(resolution = paste0("subnat_", Country_Region), dispID = Combined_Key) %>%
+                              select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
+                              starts_with("death_"), geometry)
+
+exported_subnats <- data.table(UID = subnat_merged$UID)
+subnat_rt_long_export <- subnat_rt_long[exported_subnats, on = "UID"] %>%
+  mutate(resolution = paste0("subnat_", Country_Region)) %>%
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
+         starts_with("rt"), starts_with("positive"), starts_with("death"),
+         starts_with("case")) %>%
+  data.table()
+
 subnat_rt_test <- subnat_rt_wide %>%
   select(Combined_Key, UID, Province_State, Country_Region)
 
@@ -532,16 +593,16 @@ subnat_sf %>%
   anti_join(subnat_rt_test, by = "Combined_Key") %>%
   write_csv("maps_no_country.csv")
 
-subnat_rt_wide$Province_State
+#subnat_rt_wide$Province_State
 
-for (country in uniq_countries) {
-  if (country == "United Kingdom") {
-    next
-  }
-  maps <- ne_states(country = country, returnclass = "sf")
-}
+#for (country in uniq_countries) {
+#  if (country == "United Kingdom") {
+#    next
+#  }
+#  maps <- ne_states(country = country, returnclass = "sf")
+#}
 
-x <- ne_states(geounit = "Brazil", returnclass = "sf")
+#x <- ne_states(geounit = "Brazil", returnclass = "sf")
 
 ########################################################################
 ## International countries
@@ -636,9 +697,11 @@ world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
 ## Get choices for names
 ########################################################################
 
-sf_all <- rbind(world_merged, provinces_merged, state_merged, county_merged)
-rt_long_all <- rbind(state_rt_long_export, county_rt_long_export,
-                     provinces_rt_long_export, world_rt_long_export)
+# use fill; not all dates available in subnational data
+library(plyr)
+sf_all <- rbind.fill(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
+rt_long_all <- rbind(world_rt_long_export, provinces_rt_long_export, subnat_rt_long_export,
+                     state_rt_long_export, county_rt_long_export)
 
 state_province_names1 <- sf_all %>%
   filter(startsWith(resolution, "state"),
