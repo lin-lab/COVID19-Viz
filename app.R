@@ -8,6 +8,7 @@
 #
 
 library(shiny)
+library(shinydashboard)
 library(leaflet)
 library(sf)
 library(DT)
@@ -49,13 +50,13 @@ names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
 
 # bins and colors for the map
 bins_rt <- c(0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
-bins_cases <- c(0, 1, 10, 25, 50, 100, 250, Inf)
+bins_cases <- c(0, 50, 100, 250, 500, 750, 1000, Inf)
 bins_deaths <- c(0, 1, 2, 5, 10, 25, 50, Inf)
 colors_rt <- rev(brewer.pal(7, "RdYlBu"))
 colors_cases <- brewer.pal(7, "YlOrRd")
 
-cases_color_labels <- c("0 - 1", "1 - 10", "10 - 25", "25 - 50", "50 - 100",
-                        "100 - 250", "250+")
+cases_color_labels <- c("0 - 50", "50 - 100", "100 - 250", "250 - 500",
+                        "500 - 750", "750 - 1000", "1000+")
 deaths_color_labels <- c("0 - 1", "1 - 2", "2 - 5", "5 - 10", "10 - 25",
                          "25 - 50", "50+")
 rt_color_labels <- c("0.00 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
@@ -264,11 +265,11 @@ set_state_zoom <- function(state_uid_str, default_zoom = 6) {
 click_plot <- function(plt_dat) {
   place_name <- unique(plt_dat$dispID)
   rt_plt_title <- sprintf("Rt for %s", place_name)
-  ymax_rt <- min(5, max(plt_dat$rt_upper, na.rm = TRUE))
+  ymax_rt <- min(10, max(plt_dat$rt_upper, na.rm = TRUE))
   rt_plt <- plt_dat %>%
     ggplot(aes(x = date, y = rt, ymin = rt_lower, ymax = rt_upper)) +
     geom_ribbon(fill = "#9e9e9e") + geom_line() +
-    #coord_cartesian(ylim = c(0, ymax_rt)) +
+    coord_cartesian(ylim = c(0, ymax_rt)) +
     geom_hline(yintercept = 1, lty = 2) +
     xlab("Date") + ylab("") + ggtitle(rt_plt_title) +
     theme_cowplot() +
@@ -288,6 +289,7 @@ click_plot <- function(plt_dat) {
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
     #coord_cartesian(ylim = c(1, ymax_newcases)) +
+    coord_cartesian(ylim = c(0, NA)) +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
@@ -401,6 +403,7 @@ compare_plt_helper <- function(dt, x, y, metric_str, ci_lwr = NULL,
     geom_line() + geom_point() +
     scale_color_discrete(name = "Location") +
     scale_fill_discrete(name = "Location") +
+    coord_cartesian(ylim = c(0, NA)) +
     ggtitle(title_str) + ylab("") +
     theme_cowplot() +
     theme(text = element_text(size = 18),
@@ -465,167 +468,184 @@ compare_plot <- function(dt, metric_lst) {
 ## Define UI
 ########################################################################
 
-ui <- fluidPage(
-  tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
-  tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
-  tags$head(includeHTML("assets/google-analytics.html")),
-  tags$head(tags$style(
-      ".leaflet .legend {text-align: left;}",
-      ".leaflet .legend i{float: left;}",
-      ".leaflet .legend label{float:left; text-align: left;}"
-  )),
-  # This allows all links to be opened in a new tab. Fixes issue where links
-  # sometimes refuse to connect.
-  tags$head(tag("base", varArgs = list(target = "_blank"))),
-  titlePanel("Visualizing COVID-19's Effective Reproduction Number (Rt)"),
-  tabsetPanel(
-    # first panel: big Rt map with multiple resolutions.
-    tabPanel("Map",
-      br(),
-      includeMarkdown("assets/header.md"),
-      sidebarLayout(
-        sidebarPanel(
-          p("Use slider to adjust date. Click on an area to see its Rt over time."),
-          p("Click play button to animate Rt over time."),
-          p("Note the Rt is lagged by 5 days."),
-          sliderInput("map_date", label = "Date",
-                      min = min_date, max = max_date,
-                      value = max_date,
-                      animate = animationOptions(interval = 3000)),
-          selectInput("map_metric", "Metric:",
-                      choices = list("Rt" = "rt",
-                                     "New cases/day" = "case",
-                                     "New deaths/day" = "death")),
-          selectInput("select_resolution", "Resolution:",
-                      choices = list("World" = "country",
-                                     "US States" = "state_USA",
-                                     "US Counties" = "county",
-                                     "Canadian Provinces" = "state_Canada",
-                                     "Australian Provinces" = "state_Australia",
-                                     "Chinese Provinces" = "state_China")),
-          # plot of Rt over time
-          plotOutput("map_click_plot", height = "600px")
-        ), # end of sidebarPanel
-        mainPanel(
-          leafletOutput("map_main", height = "80vh", width = "100%"),
-          h4(textOutput("Rt_table_title")),
-          DT::DTOutput("Rt_table"),
+ui <- dashboardPage(
+  dashboardHeader(title = "Visualizing COVID-19 Spread Metrics"),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Map", tabName = "Map"),
+      menuItem("Compare Rt", tabName = "compare_rt"),
+      menuItem("Forest Plot", tabName = "Forest Plot"),
+      menuItem("Explore States", tabName = "Explore States")
+    )
+  ),
+  dashboardBody(
+    tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
+    tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
+    tags$head(includeHTML("assets/google-analytics.html")),
+    tags$head(tags$style(
+        ".leaflet .legend {text-align: left;}",
+        ".leaflet .legend i{float: left;}",
+        ".leaflet .legend label{float:left; text-align: left;}"
+    )),
+    # This allows all links to be opened in a new tab. Fixes issue where links
+    # sometimes refuse to connect.
+    tags$head(tag("base", varArgs = list(target = "_blank"))),
+    fluidPage(
+      tabItems(
+        # first panel: big Rt map with multiple resolutions.
+        tabItem("Map",
           br(),
-          includeMarkdown("assets/Rt_table_footer.md")
-        )
-      ) # end of sidebarLayout
-    ), # end of tabPanel
-    # Second tab: Compare Rt across different regions.
-    tabPanel("Compare Rt",
-      sidebarLayout(
-        sidebarPanel(
-          h4("Select areas to compare their Rt."),
-          p("Note the Rt is lagged by 5 days."),
-          p("Some areas may not appear in the plot for all time points because of insufficient data."),
-          p("Occasionally, locations may have negative values for new cases because of reporting issues."),
-          # break up the selection by state, county, and country
-          selectizeInput("compare_sel_states", label = "States/Provinces",
-                         choices = place_choices$state,
-                         multiple = TRUE),
-          selectizeInput("compare_sel_counties", label = "Counties (US)",
-                         choices = place_choices$county,
-                         multiple = TRUE),
-          selectizeInput("compare_sel_countries", label = "Countries",
-                         choices = place_choices$country,
-                         multiple = TRUE),
-          checkboxGroupInput("compare_metric",
-                             label = "Select metrics to compare",
-                             choices = list("Rt" = "rt",
-                                            "Daily new cases per million" = "case_rate",
-                                            "Daily new deaths per million" = "death_rate",
-                                            "Daily new cases" = "positiveIncrease",
-                                            "Daily new deaths" = "deathIncrease",
-                                            "Total cases per million" = "positive_percapita",
-                                            "Total deaths per million" = "death_percapita",
-                                            "Total cases" = "positive",
-                                            "Total deaths" = "death"),
-                             selected = c("rt", "case_rate", "death_rate")),
-          actionButton("compare_submit", label = "Submit")
-        ),
-        mainPanel(
-          uiOutput("compare_plt_ui")
-        )
-      ) # end of sideBarLayout
-    ), # end of tabPanel
-    # 3rd tab: Forest plot of Rts
-    tabPanel("Forest Plot",
-      sidebarLayout(
-        sidebarPanel(
-          h4("Display a forest plot of a metric for a given resolution"),
-          p("Use slider to adjust date."),
-          p("Note the Rt is lagged by 5 days."),
-          sliderInput("forestPlot_date", label = "Date",
-                      min = min_date, max = max_date,
-                      value = max_date),
-          selectInput("forestPlot_metric", "Metric:",
-                      choices = list("Rt" = "rt",
-                                     "New cases/day" = "case",
-                                     "New deaths/day" = "death")),
-          selectInput("forestPlot_resolution", "Resolution:",
-                      choices = list("World" = "country",
-                                     "US States" = "state_USA",
-                                     "Canadian Provinces" = "state_Canada",
-                                     "Australian Provinces" = "state_Australia",
-                                     "Chinese Provinces" = "state_China"))
-        ), # end of sidebarPanel
-        mainPanel(
-          # Need UI output to dynamically set the size of the plots.
-          uiOutput("RtForestPlot_ui"),
-          p("Some locations might not be shown because of insufficient data.")
-        ) # end of mainPanel
-      ) # end of sidebarLayout
-    ),
-    # 4th tab: explore states
-    tabPanel("Explore States",
-      # controls at the top
-      fluidRow(
-        column(6,
-          h4("Select a state to explore."),
-          selectizeInput("state_select", label = "State",
-                         selected = "84000025",
-                         choices = place_choices$us_states_w_counties,
-                         multiple = FALSE)
-        ),
-        column(6, align = "center",
-          p("Note the Rt is lagged by 5 days."),
-          sliderInput("state_select_date", label = "Select date",
-                      min = min_date, max = max_date,
-                      value = max_date, animate = TRUE)
-        )
-      ),
-      # output at the bottom
-      fluidRow(
-        # These guys can have fixed height
-        column(6, align = "center",
-          plotOutput("RtOverTime_exploreState", height = "500px")
-        ),
-        column(6, align = "center",
-          leafletOutput("explore_states_out", height = "500px")
-        )
-      ),
-      uiOutput("explorestate_row2_ui"),
-      fluidRow(
-        h4(textOutput("Rt_table_explore_states_title")),
-        DT::DTOutput("Rt_table_explore_states"),
-        br(),
-        includeMarkdown("assets/Rt_table_footer.md")
-      )
-    ), # end of tabPanel
-    # last tab: About page
-    tabPanel("About",
-      withTags({
-        div(class = "aboutpage",
-          includeMarkdown("assets/about.md")
-        )
-      }) # end of withTags
-    ) # end of tabPanel
-  ) # end of tabsetPanel
-) # end of fluidPage
+          fluidRow(
+            includeMarkdown("assets/header.md"),
+            p("Use slider to adjust date. Click on an area to see its Rt over time."),
+            p("Click play button to animate Rt over time."),
+            p("Note the Rt is lagged by 5 days."),
+          ),
+          fluidRow(
+            column(width = 4,
+              sliderInput("map_date", label = "Date",
+                          min = min_date, max = max_date,
+                          value = max_date,
+                          animate = animationOptions(interval = 3000))
+            ), # end of column 1
+            column(width = 4,
+              radioButtons("map_metric", "Metric:",
+                          choices = list("Rt" = "rt",
+                                          "New cases/day" = "case",
+                                          "New deaths/day" = "death")),
+            ), # end of column 2
+            column(width = 4,
+              selectInput("select_resolution", "Resolution:",
+                          choices = list("World" = "country",
+                                        "US States" = "state_USA",
+                                        "US Counties" = "county",
+                                        "Canadian Provinces" = "state_Canada",
+                                        "Australian Provinces" = "state_Australia",
+                                        "Chinese Provinces" = "state_China"))
+            ) # end of column 3
+          ), # end of fluidRow 1
+          fluidRow(
+            column(8, leafletOutput("map_main", height = "600px", width = "100%")),
+            # plot of Rt over time
+            column(4, plotOutput("map_click_plot", height = "600px"))
+          ), # end of fluidRow 2
+          fluidRow(
+              DT::DTOutput("Rt_table"),
+              br(),
+              includeMarkdown("assets/Rt_table_footer.md")
+          ) # end of fluidRow 3
+        ), # end of tabItem
+        # Second tab: Compare Rt across different regions.
+        tabItem("compare_rt",
+          fluidPage(
+            column(width = 4,
+              h4("Select areas to compare their Rt."),
+              p("Note the Rt is lagged by 5 days."),
+              p("Some areas may not appear in the plot for all time points because of insufficient data."),
+              p("Occasionally, locations may have negative values for new cases because of reporting issues."),
+              # break up the selection by state, county, and country
+              selectizeInput("compare_sel_states", label = "States/Provinces",
+                            choices = place_choices$state,
+                            multiple = TRUE),
+              selectizeInput("compare_sel_counties", label = "Counties (US)",
+                            choices = place_choices$county,
+                            multiple = TRUE),
+              selectizeInput("compare_sel_countries", label = "Countries",
+                            choices = place_choices$country,
+                            multiple = TRUE),
+              checkboxGroupInput("compare_metric",
+                                label = "Select metrics to compare",
+                                choices = list("Rt" = "rt",
+                                                "Daily new cases per million" = "case_rate",
+                                                "Daily new deaths per million" = "death_rate",
+                                                "Daily new cases" = "positiveIncrease",
+                                                "Daily new deaths" = "deathIncrease",
+                                                "Total cases per million" = "positive_percapita",
+                                                "Total deaths per million" = "death_percapita",
+                                                "Total cases" = "positive",
+                                                "Total deaths" = "death"),
+                                selected = c("rt", "case_rate", "death_rate")),
+              actionButton("compare_submit", label = "Submit")
+            ), # end of column
+            column(width = 8, uiOutput("compare_plt_ui"))
+          ) # end of fluidPage
+        ), # end of tabItem
+        # 3rd tab: Forest plot of Rts
+        tabItem("Forest Plot",
+          sidebarLayout(
+            sidebarPanel(
+              h4("Display a forest plot of a metric for a given resolution"),
+              p("Use slider to adjust date."),
+              p("Note the Rt is lagged by 5 days."),
+              sliderInput("forestPlot_date", label = "Date",
+                          min = min_date, max = max_date,
+                          value = max_date),
+              selectInput("forestPlot_metric", "Metric:",
+                          choices = list("Rt" = "rt",
+                                        "New cases/day" = "case",
+                                        "New deaths/day" = "death")),
+              selectInput("forestPlot_resolution", "Resolution:",
+                          choices = list("World" = "country",
+                                        "US States" = "state_USA",
+                                        "Canadian Provinces" = "state_Canada",
+                                        "Australian Provinces" = "state_Australia",
+                                        "Chinese Provinces" = "state_China"))
+            ), # end of sidebarPanel
+            mainPanel(
+              # Need UI output to dynamically set the size of the plots.
+              uiOutput("RtForestPlot_ui"),
+              p("Some locations might not be shown because of insufficient data.")
+            ) # end of mainPanel
+          ) # end of sidebarLayout
+        ), # end of tabItem
+        # 4th tab: explore states
+        tabItem("Explore States",
+          # controls at the top
+          fluidRow(
+            column(6,
+              h4("Select a state to explore."),
+              selectizeInput("state_select", label = "State",
+                            selected = "84000025",
+                            choices = place_choices$us_states_w_counties,
+                            multiple = FALSE)
+            ),
+            column(6, align = "center",
+              p("Note the Rt is lagged by 5 days."),
+              sliderInput("state_select_date", label = "Select date",
+                          min = min_date, max = max_date,
+                          value = max_date, animate = TRUE)
+            )
+          ),
+          # output at the bottom
+          fluidRow(
+            # These guys can have fixed height
+            column(6, align = "center",
+              plotOutput("RtOverTime_exploreState", height = "500px")
+            ),
+            column(6, align = "center",
+              leafletOutput("explore_states_out", height = "500px")
+            )
+          ),
+          uiOutput("explorestate_row2_ui"),
+          fluidRow(
+            h4(textOutput("Rt_table_explore_states_title")),
+            DT::DTOutput("Rt_table_explore_states"),
+            br(),
+            includeMarkdown("assets/Rt_table_footer.md")
+          )
+        ), # end of tabItem
+        # last tab: About page
+        tabItem("About",
+          withTags({
+            div(class = "aboutpage",
+              includeMarkdown("assets/about.md")
+            )
+          }) # end of withTags
+        ) # end of tabItem
+      ) # end of tabItems
+    ) # end of fluidPage
+  ) # end of dashboardBody
+) # end of dashboardPage
 
 ########################################################################
 ## Define Server function
