@@ -613,8 +613,9 @@ names(state_centers) <- usa_state_counties$UID
 ## Save everything
 ########################################################################
 
-saveRDS(sf_all, "clean_data/sf_all.rds")
-saveRDS(rt_long_all, "clean_data/rt_long_all.rds")
-saveRDS(names_list, "clean_data/names_list.rds")
-saveRDS(state_centers, "clean_data/state_centers.rds")
-fwrite(rt_long_all, "clean_data/rt_table_export.csv")
+out_dir = "clean_data_pois"
+saveRDS(sf_all, file.path(out_dir, "sf_all.rds"))
+saveRDS(rt_long_all, file.path(out_dir, "rt_long_all.rds"))
+saveRDS(names_list, file.path(out_dir, "names_list.rds"))
+saveRDS(state_centers, file.path(out_dir, "state_centers.rds"))
+fwrite(rt_long_all, file.path(out_dir, "rt_table_export.csv"))
