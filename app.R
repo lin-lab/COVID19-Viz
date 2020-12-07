@@ -26,7 +26,7 @@ library(RColorBrewer)
 
 # shape file: wide data that has 1 row per location with all Rts, Rt CI's, and
 # shapes
-base_url <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files"
+base_url <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files_pois"
 sf_all <- readRDS(url(sprintf("%s/sf_all.rds", base_url)))
 
 # long data frame of Rts
