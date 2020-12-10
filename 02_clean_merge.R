@@ -12,6 +12,7 @@ library(rnaturalearth)
 library(rgeos)
 library(purrr)
 library(ggplot2)
+library(stringi)
 
 START_DATE <- ymd("2020-04-01")
 
@@ -423,6 +424,187 @@ provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
   data.table()
 
 ########################################################################
+## Additional subnational data
+########################################################################
+subnat_cols <- cols(
+  UID = col_integer(),
+  positive = col_integer(),
+  death = col_integer(),
+  date = col_date(format = "%Y-%m-%d"),
+  Combined_Key = col_character(),
+  iso2 = col_character(),
+  iso3 = col_character(),
+  code3 = col_double(),
+  FIPS = col_logical(),
+  Admin2 = col_logical(),
+  Province_State = col_character(),
+  Country_Region = col_character(),
+  Lat = col_double(),
+  Long_ = col_double(),
+  population = col_integer(),
+  deathIncrease = col_integer(),
+  positiveIncrease = col_integer(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  cases_lag = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+subnat_rt_long <- read_csv("raw_data/jhu_subnational_rt_case_death_rate.csv",
+                           col_types = subnat_cols) %>%
+  # some plcae was duplicated a lot on a single day
+  distinct() %>%
+  data.table() %>%
+  reformat_data(START_DATE)
+
+stopifnot(identical(anyDuplicated(subnat_rt_long), 0L))
+
+subnat_rt_wide <- subnat_rt_long %>%
+  select(UID, Province_State, Country_Region, Lat, Long_, Combined_Key, date,
+         starts_with("rt"), starts_with("case_"), starts_with("death_")) %>%
+  pivot_wider(id_cols = UID:Combined_Key,
+              names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_"))) %>%
+  data.table()
+
+uniq_countries <- unique(subnat_rt_long$Country_Region)
+non_uk <- uniq_countries[uniq_countries != "United Kingdom"]
+
+# be aware of spaces. Spaces after means this is a prefix, spaces before means
+# it's a postfix
+subnat_patt <- c("Province of " = "", "Community of " = "", " Province" = "",
+                 " Department" = "", " Prefecture" = "", " Region" = "",
+                 " County" = "", "Republic of " = "")
+subnat_sf_orig <- ne_states(country = non_uk, returnclass = "sf")
+uk_sf <- ne_countries(country = "united kingdom", type = "map_units",
+                      returnclass = "sf") %>%
+  mutate(Combined_Key = paste0(name_long, ", United Kingdom"))
+
+sf_lst <- list()
+for (country in non_uk) {
+  country_sf <- subnat_sf_orig %>%
+    filter(admin == country)
+  if (country == "Spain" || country == "Italy") {
+    country_sf <- country_sf %>%
+      select(region) %>%
+      group_by(region) %>%
+      summarize(geometry = st_union(geometry)) %>%
+      rename(name_en = region) %>%
+      mutate(admin = country)
+  }
+  if (country == "Germany" || country == "Netherlands" || country == "Mexico") {
+    tmp <- country_sf %>%
+      mutate(name_noacc = stri_trans_general(name, "latin-ascii"))
+  } else {
+    tmp <- country_sf %>%
+      mutate(name_noacc = stri_trans_general(name_en, "latin-ascii"))
+  }
+  final_sf <- tmp %>%
+    mutate(name_clean = str_replace_all(name_noacc, subnat_patt),
+           Combined_Key = paste0(name_clean, ", ", admin)) %>%
+    select(Combined_Key, geometry)
+  sf_lst[[country]] <- final_sf
+}
+sf_lst[["united kingdom"]] <- select(uk_sf, Combined_Key, geometry)
+
+subnat_sf <- do.call(rbind, sf_lst)
+rownames(subnat_sf) <- NULL
+
+#relabel 45 subnational units to align rt/map dfs
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Federal District, Brazil"] ="Distrito Federal, Brazil"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bio Bio, Chile"] ="Biobio, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Khmelnytsky Oblast, Ukraine"] ="Khmelnytskyi Oblast, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Zaporizhzhya Oblast, Ukraine"] ="Zaporizhia Oblast, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sodermanland, Sweden"] ="Sormland, Sweden"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Islamabad Capital Territory, Pakistan"] ="Islamabad, Pakistan"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Azad Kashmir, Pakistan"] ="Azad Jammu and Kashmir, Pakistan"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tumbes region, Peru"] ="Tumbes, Peru"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Canary Is., Spain"] ="Canarias, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Andalucia, Spain"] ="Andalusia, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Islas Baleares, Spain"] ="Baleares, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Foral de Navarra, Spain"] ="Navarra, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Castilla-La Mancha, Spain"] ="Castilla - La Mancha, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Cataluna, Spain"] ="Catalonia, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Valenciana, Spain"] ="C. Valenciana, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Jamtland, Sweden"] ="Jamtland Harjedalen, Sweden"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Archipelago of Saint Andrews, Colombia"] ="San Andres y Providencia, Colombia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Magallanes y la Antartica Chilena, Chile"] ="Magallanes, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bogota, Colombia"] ="Capital District, Colombia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sicily, Italy"] ="Sicilia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Santiago Metropolitan, Chile"] ="Metropolitana, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Libertador General Bernardo O'Higgins, Chile"] ="OHiggins, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Apulia, Italy"] ="Puglia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Friuli-Venezia Giulia, Italy"] ="Friuli Venezia Giulia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Trentino-Alto Adige, Italy"] ="P.A. Trento, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Distrito Federal, Mexico"] ="Ciudad de Mexico, Mexico"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Dagestan, Russia"] ="Dagestan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Oryol Oblast, Russia"] ="Orel Oblast, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sakha Republic, Russia"] ="Sakha (Yakutiya) Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Kalmykia, Russia"] ="Kalmykia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bashkortostan, Russia"] ="Bashkortostan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Mordovia, Russia"] ="Mordovia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Ingushetia, Russia"] ="Ingushetia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Karelia, Russia"] ="Karelia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Buryatia, Russia"] ="Buryatia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Jewish Autonomous Oblast, Russia"] ="Jewish Autonomous Okrug, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Khakassia, Russia"] ="Khakassia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tatarstan, Russia"] ="Tatarstan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Chuvash Republic, Russia"] ="Chuvashia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="North Ossetia-Alania, Russia"] ="North Ossetia - Alania Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Kabardino-Balkar Republic, Russia"] ="Kabardino-Balkarian Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tuva Republic, Russia"] ="Tyva Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Adygea, Russia"] ="Adygea Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Autonomous Crimea, Russia"] ="Crimea Republic*, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sevastopol, Russia"] ="Sevastopol*, Ukraine"
+
+subnat_merged <- subnat_rt_wide %>%
+  merge(subnat_sf, by = "Combined_Key", all.x = FALSE) %>%
+  mutate(resolution = paste0("subnat_", Country_Region), dispID = Combined_Key) %>%
+                              select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
+                              starts_with("death_"), geometry)
+
+exported_subnats <- data.table(UID = subnat_merged$UID)
+subnat_rt_long_export <- subnat_rt_long[exported_subnats, on = "UID"] %>%
+  mutate(resolution = paste0("subnat_", Country_Region)) %>%
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
+         starts_with("rt"), starts_with("positive"), starts_with("death"),
+         starts_with("case")) %>%
+  data.table()
+
+subnat_rt_test <- subnat_rt_wide %>%
+  select(Combined_Key, UID, Province_State, Country_Region)
+
+subnat_rt_test %>%
+  anti_join(subnat_sf, by = "Combined_Key") %>%
+  arrange(Country_Region) %>%
+  write_csv("country_no_maps.csv")
+
+subnat_sf %>%
+  select(Combined_Key) %>%
+  st_drop_geometry() %>%
+  anti_join(subnat_rt_test, by = "Combined_Key") %>%
+  write_csv("maps_no_country.csv")
+
+#subnat_rt_wide$Province_State
+
+#for (country in uniq_countries) {
+#  if (country == "United Kingdom") {
+#    next
+#  }
+#  maps <- ne_states(country = country, returnclass = "sf")
+#}
+
+#x <- ne_states(geounit = "Brazil", returnclass = "sf")
+
+########################################################################
 ## International countries
 ########################################################################
 
@@ -518,9 +700,11 @@ world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
 ## Get choices for names
 ########################################################################
 
-sf_all <- rbind(world_merged, provinces_merged, state_merged, county_merged)
-rt_long_all <- rbind(state_rt_long_export, county_rt_long_export,
-                     provinces_rt_long_export, world_rt_long_export)
+# use fill; not all dates available in subnational data
+library(plyr)
+sf_all <- rbind.fill(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
+rt_long_all <- rbind(world_rt_long_export, provinces_rt_long_export, subnat_rt_long_export,
+                     state_rt_long_export, county_rt_long_export)
 
 state_province_names1 <- sf_all %>%
   filter(startsWith(resolution, "state"),

@@ -9,7 +9,7 @@ then
 fi
 
 file_ending="rt_case_death_rate.csv"
-for ext in county state global
+for ext in county state global subnational
 do
     filename=jhu_${ext}_${file_ending}
     out_zip=${out_dir}/${filename}.zip
