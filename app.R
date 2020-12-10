@@ -25,20 +25,40 @@ library(RColorBrewer)
 ## Load data files
 ########################################################################
 
+BASE_URL <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files_pois"
+BASE_PATH <- "clean_data_pois"
+
+#' Read a specified file locally if it exists, else read from AWS
+#'
+read_aws_or_local <- function(fname, base_url = BASE_URL,
+                              base_path = BASE_PATH) {
+  stopifnot(endsWith(fname, ".rds"))
+  local_fname <- file.path(base_path, fname)
+  if (file.exists(local_fname)) {
+    ret <- readRDS(local_fname)
+  } else {
+    url <- sprintf("%s/%s", base_url, fname)
+    ret <- readRDS(url(url))
+  }
+  return(ret)
+}
+
 # shape file: wide data that has 1 row per location with all Rts, Rt CI's, and
 # shapes
-base_url <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files_pois"
-sf_all <- readRDS(url(sprintf("%s/sf_all.rds", base_url)))
+sf_all <- read_aws_or_local("sf_all.rds")
 
 # long data frame of Rts
-rt_long_all <- readRDS(url(sprintf("%s/rt_long_all.rds", base_url)))
+rt_long_all <- read_aws_or_local("rt_long_all.rds")
 setkey(rt_long_all, UID)
 
+# make sure we picked up the right one
+stopifnot("case_rate" %in% colnames(rt_long_all))
+
 # choices for each place
-place_choices <- readRDS(url(sprintf("%s/names_list.rds", base_url)))
+place_choices <- read_aws_or_local("names_list.rds")
 
 # state centers
-state_centers <- readRDS(url(sprintf("%s/state_centers.rds", base_url)))
+state_centers <- read_aws_or_local("state_centers.rds")
 
 # map state UIDs to place name
 state_uid_to_place <- as.list(names(place_choices$us_state))
