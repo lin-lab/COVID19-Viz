@@ -335,9 +335,18 @@ click_plot <- function(plt_dat) {
 
 #' Preprocess data frame to be displayed by DT.
 munge_for_dt <- function(df) {
-  ret <- head(df[, .(dispID, positive, positive_percapita, death, death_percapita)])
-  # TODO: add other stuff here
-  return(ret)
+  df_subset <- df[, .(dispID, positive, death, rt, rt_lower, rt_upper,
+                      case_rate, case_lower, case_upper, death_rate,
+                      death_lower, death_upper)]
+  numeric_cols <- c("rt", "rt_lower", "rt_upper", "case_rate", "case_lower",
+                    "case_upper", "death_rate", "death_lower", "death_upper")
+  df_subset[, (numeric_cols) := lapply(.SD, round, digits = 2),
+            .SDcols = numeric_cols]
+  colnames(df_subset) <- c("Location", "Total Cases", "Total Deaths", "Rt", "Rt
+                           CI Lwr", "Rt CI Upr", "Case Rate", "Case Lwr",
+                           "Case Upr", "Death Rate", "Death Lwr", "Death Upr")
+  setorderv(df_subset, cols = "Case Rate", order = -1, na.last = TRUE)
+  return(df_subset)
 }
 
 #' Draw forest plot of current Rt and confidence interval
@@ -489,13 +498,16 @@ compare_plot <- function(dt, metric_lst) {
 ########################################################################
 
 ui <- dashboardPage(
-  dashboardHeader(title = "Visualizing COVID-19 Spread Metrics"),
+  dashboardHeader(title = "Visualizing COVID-19 Spread Metrics",
+                  titleWidth = 450),
   dashboardSidebar(
     sidebarMenu(
       menuItem("Map", tabName = "Map"),
       menuItem("Compare Rt", tabName = "compare_rt"),
-      menuItem("Forest Plot", tabName = "Forest Plot"),
-      menuItem("Explore States", tabName = "Explore States")
+      menuItem("Forest Plot", tabName = "forest_plot"),
+      menuItem("Explore States", tabName = "explore_states"),
+      menuItem("Table", tabName = "table"),
+      menuItem("About", tabName = "about")
     )
   ),
   dashboardBody(
@@ -549,11 +561,6 @@ ui <- dashboardPage(
             # plot of Rt over time
             column(4, plotOutput("map_click_plot", height = "600px"))
           ), # end of fluidRow 2
-          fluidRow(
-              DT::DTOutput("Rt_table"),
-              br(),
-              includeMarkdown("assets/Rt_table_footer.md")
-          ) # end of fluidRow 3
         ), # end of tabItem
         # Second tab: Compare Rt across different regions.
         tabItem("compare_rt",
@@ -591,7 +598,7 @@ ui <- dashboardPage(
           ) # end of fluidPage
         ), # end of tabItem
         # 3rd tab: Forest plot of Rts
-        tabItem("Forest Plot",
+        tabItem("forest_plot",
           sidebarLayout(
             sidebarPanel(
               h4("Display a forest plot of a metric for a given resolution"),
@@ -619,7 +626,7 @@ ui <- dashboardPage(
           ) # end of sidebarLayout
         ), # end of tabItem
         # 4th tab: explore states
-        tabItem("Explore States",
+        tabItem("explore_states",
           # controls at the top
           fluidRow(
             column(6,
@@ -654,8 +661,31 @@ ui <- dashboardPage(
             includeMarkdown("assets/Rt_table_footer.md")
           )
         ), # end of tabItem
+        tabItem("table",
+          fluidRow(
+            box(width = 6,
+              sliderInput("table_date", label = "Date",
+                          min = min_date, max = max_date,
+                          value = max_date)
+            ), # end of box 1
+            box(width = 6,
+              selectInput("table_select_resolution", "Resolution:",
+                          choices = list("World" = "country",
+                                         "US States" = "state_USA",
+                                         "US Counties" = "county",
+                                         "Canadian Provinces" = "state_Canada",
+                                         "Australian Provinces" = "state_Australia",
+                                         "Chinese Provinces" = "state_China"))
+            ) # end of box 2
+          ), # end of fluidRow 1
+          fluidRow(
+              DT::DTOutput("Rt_table"),
+              br(),
+              includeMarkdown("assets/Rt_table_footer.md")
+          ) # end of fluidRow 2
+        ), # end of tabItem for table
         # last tab: About page
-        tabItem("About",
+        tabItem("about",
           withTags({
             div(class = "aboutpage",
               includeMarkdown("assets/about.md")
@@ -791,8 +821,8 @@ server <- function(input, output, session) {
 
   # Table of current Rts at current resolution
   output$Rt_table <- DT::renderDT({
-    date_select <- format(input$map_date, "%Y-%m-%d")
-    sel_resolution <- input$select_resolution
+    date_select <- format(input$table_date, "%Y-%m-%d")
+    sel_resolution <- input$table_select_resolution
     validate(need(date_select, "Please select a date."))
     validate(need(sel_resolution, "Please select a resolution."))
 
