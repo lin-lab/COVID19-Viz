@@ -1,4 +1,5 @@
 library(readr)
+library(plyr)
 library(dplyr)
 library(tidyr)
 library(lubridate)
@@ -593,17 +594,6 @@ subnat_sf %>%
   anti_join(subnat_rt_test, by = "Combined_Key") %>%
   write_csv("maps_no_country.csv")
 
-#subnat_rt_wide$Province_State
-
-#for (country in uniq_countries) {
-#  if (country == "United Kingdom") {
-#    next
-#  }
-#  maps <- ne_states(country = country, returnclass = "sf")
-#}
-
-#x <- ne_states(geounit = "Brazil", returnclass = "sf")
-
 ########################################################################
 ## International countries
 ########################################################################
@@ -701,8 +691,7 @@ world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
 ########################################################################
 
 # use fill; not all dates available in subnational data
-library(plyr)
-sf_all <- rbind.fill(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
+sf_all <- plyr::rbind.fill(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
 rt_long_all <- rbind(world_rt_long_export, provinces_rt_long_export, subnat_rt_long_export,
                      state_rt_long_export, county_rt_long_export)
 
