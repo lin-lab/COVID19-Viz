@@ -1,5 +1,4 @@
 library(readr)
-library(plyr)
 library(dplyr)
 library(tidyr)
 library(lubridate)
@@ -75,11 +74,17 @@ state_rt_tomerge <- state_rt_long %>%
 
 state_maps <- ne_states(country = "united states of america",
                         returnclass = "sf")
+# for JHU, Puerto Rico's UIDs start with 630
+
+pr_maps <- us_counties() %>%
+  filter(state_name == "Puerto Rico") %>%
+  st_union() %>%
+  st_sf() %>%
+  mutate(name = "Puerto Rico", UID = 630)
 
 # Add points for American Samoa, Guam, Puerto Rico, etc
-sort(state_maps$name)
 jhu_states <- state_rt_tomerge$stateName
-add_states <- dplyr::setdiff(jhu_states, state_maps$name)
+add_states <- dplyr::setdiff(jhu_states, c(state_maps$name, "Puerto Rico"))
 print(add_states)
 
 unjoined_states <- state_rt_long %>%
@@ -110,7 +115,7 @@ state_merged <- state_maps %>%
   select(name, geometry, fips) %>%
   mutate(UID = as.integer(paste0("840000", substring(fips, 3)))) %>%
   select(-fips) %>%
-  rbind(new_state_points) %>%
+  rbind(pr_maps, new_state_points) %>%
   merge(state_rt_tomerge, by = "UID", all.x = FALSE) %>%
   mutate(resolution = "subnat_USA", dispID = paste0(name, ", USA")) %>%
   select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
@@ -127,8 +132,10 @@ state_rt_long_export[, `:=` (Lat = NULL, Long_ = NULL, stateName = NULL)]
 ## County-level data
 ########################################################################
 
+# for JHU, Puerto Rico's UIDs start with 630
 county_maps <- us_counties() %>%
-  mutate(UID = as.integer(paste0("840", geoid)))
+  mutate(UID = case_when(state_name == "Puerto Rico" ~ as.integer(paste0("630", geoid)),
+                         TRUE ~ as.integer(paste0("840", geoid))))
 
 county_cols <- cols(
   UID = col_double(),
@@ -466,8 +473,7 @@ subnat_rt_wide <- subnat_rt_long %>%
   pivot_wider(id_cols = UID:Combined_Key,
               names_from = date,
               values_from = c(starts_with("rt"), starts_with("case_"),
-                              starts_with("death_"))) %>%
-  data.table()
+                              starts_with("death_")))
 
 uniq_countries <- unique(subnat_rt_long$Country_Region)
 non_uk <- uniq_countries[uniq_countries != "United Kingdom"]
@@ -577,7 +583,8 @@ stopifnot(repeated_subnat == "Lima, Peru")
 # area surrounding the city)
 subnat_sf <- subnat_sf %>%
   group_by(Combined_Key) %>%
-  summarize(geometry = st_union(geometry))
+  summarize(geometry = st_union(geometry)) %>%
+  st_as_sf(sf_column_name = "geometry")
 
 subnat_merged <- subnat_rt_wide %>%
   merge(subnat_sf, by = "Combined_Key", all.x = FALSE) %>%
@@ -704,7 +711,7 @@ world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
 ########################################################################
 
 # use fill; not all dates available in subnational data
-sf_all <- plyr::rbind.fill(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
+sf_all <- bind_rows(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
 rt_long_all <- rbind(world_rt_long_export, provinces_rt_long_export, subnat_rt_long_export,
                      state_rt_long_export, county_rt_long_export)
 
@@ -746,7 +753,7 @@ country_names <- sf_all %>%
 
 us_states_w_counties <- us_state_dt %>%
   filter(state %in% unique(county_names$State), state != "District of Columbia")
-stopifnot(nrow(us_states_w_counties) == 50)
+stopifnot(nrow(us_states_w_counties) == 51)
 
 names_list <- list(
   subnat = as.list(state_province_names$UID),
@@ -803,5 +810,5 @@ out_dir = "clean_data_pois"
 saveRDS(sf_all, file.path(out_dir, "sf_all.rds"))
 saveRDS(rt_long_all, file.path(out_dir, "rt_long_all.rds"))
 saveRDS(names_list, file.path(out_dir, "names_list.rds"))
-saveRDS(state_centers, file.path(out_dir, "state_centers.rds"))
+#saveRDS(state_centers, file.path(out_dir, "state_centers.rds"))
 fwrite(rt_long_all, file.path(out_dir, "rt_table_export.csv"))
