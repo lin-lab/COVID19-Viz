@@ -775,34 +775,6 @@ rep_names
 stopifnot(nrow(rep_names) == 0)
 
 ########################################################################
-## Get state centers for plotting
-########################################################################
-
-get_lnglat <- function(geometry, UID) {
-  bbox <- st_bbox(geometry)
-  # do a weighted mean because we want the legend on the right side
-  lng <- weighted.mean(c(bbox["xmin"], bbox["xmax"]), c(0.25, 0.75))
-  lat <- mean(c(bbox["ymin"], bbox["ymax"]))
-  if (UID == "84000002") {
-    # Alaska
-    lng <- -147
-  } else if (UID == "84000015") {
-    # Hawaii
-    lng <- -154.65
-    lat <- 20.09
-  }
-  return(c(lng, lat))
-}
-
-usa_state_counties <- sf_all %>%
-  filter(resolution == "subnat_USA", UID > 12499) %>%
-  select(UID, dispID, geometry)
-
-state_centers <- purrr::map2(usa_state_counties$geometry, usa_state_counties$UID,
-                             get_lnglat)
-names(state_centers) <- usa_state_counties$UID
-
-########################################################################
 ## Save everything
 ########################################################################
 
@@ -810,5 +782,4 @@ out_dir = "clean_data_pois"
 saveRDS(sf_all, file.path(out_dir, "sf_all.rds"))
 saveRDS(rt_long_all, file.path(out_dir, "rt_long_all.rds"))
 saveRDS(names_list, file.path(out_dir, "names_list.rds"))
-#saveRDS(state_centers, file.path(out_dir, "state_centers.rds"))
 fwrite(rt_long_all, file.path(out_dir, "rt_table_export.csv"))
