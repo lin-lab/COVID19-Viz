@@ -402,14 +402,14 @@ forest_plot <- function(df, resolution, date_lag,
   names(color_pal) <- levels(df$range)
 
   # change e.g. Texas, USA -> Texas; Kings, New York -> Kings
-  setorderv(df, cols = plt_params$var, order = 1)
-  if (resolution == "county" || startsWith(resolution, "state_")) {
+  setorderv(df, cols = plt_params$var, order = 1, na.last = TRUE)
+  if (resolution == "county" || startsWith(resolution, "subnat_")) {
     df[, dispID_new := sub(", [A-Za-z ]+", "", dispID)]
     df[, dispID_ord := factor(dispID_new, levels = dispID_new)]
   } else {
     df[, dispID_ord := factor(dispID, levels = dispID)]
   }
-  plt_df <- na.omit(df)
+  plt_df <- df[!is.na(get(plt_params$var)), ]
   if (nrow(plt_df) == 0) {
     # quit if there's no data
     p <- ggplot() +
@@ -423,30 +423,32 @@ forest_plot <- function(df, resolution, date_lag,
             plot.title = element_text(size = 24),
             panel.grid.major.x = element_blank(),
             panel.grid.minor.x = element_blank())
-  } else {
-    title_str <- sprintf("%s on %s", plt_params$title_str, date_lag)
-    xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
-    p <- ggplot(plt_df,
-          aes_string(x = plt_params$var, y = "dispID_ord",
-                      xmin = plt_params$lwr, xmax = plt_params$upr,
-                      color = "range")) +
-      geom_point(size = 3) + geom_errorbarh(size = 2) +
-      scale_color_manual(drop = FALSE, values = color_pal) +
-      geom_vline(xintercept = 1, lty = 2, color = "white", lwd = 1.5) +
-      xlab(xlab_str) + ylab("") +
-      ggtitle(title_str) +
-      theme_dark() +
-      #coord_cartesian(xlim = c(0, 5)) +
-      theme(axis.text.y = element_text(size = 16),
-            axis.text.x = element_text(size = 16),
-            axis.title = element_text(size = 20),
-            legend.title = element_text(size = 18),
-            legend.text = element_text(size = 16),
-            plot.title = element_text(size = 24),
-            panel.grid.major.x = element_blank(),
-            panel.grid.minor.x = element_blank(),
-            panel.background = element_rect(fill = '#9e9e9e',
-                                            colour = '#9e9e9e'))
+    return(p)
+  }
+  title_str <- sprintf("%s on %s", plt_params$title_str, date_lag)
+  xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
+  p <- ggplot(plt_df,
+        aes_string(x = plt_params$var, y = "dispID_ord",
+                    xmin = plt_params$lwr, xmax = plt_params$upr,
+                    color = "range")) +
+    geom_point(size = 3) + geom_errorbarh(size = 2) +
+    scale_color_manual(drop = FALSE, values = color_pal) +
+    xlab(xlab_str) + ylab("") +
+    ggtitle(title_str) +
+    theme_dark() +
+    #coord_cartesian(xlim = c(0, 5)) +
+    theme(axis.text.y = element_text(size = 16),
+          axis.text.x = element_text(size = 16),
+          axis.title = element_text(size = 20),
+          legend.title = element_text(size = 18),
+          legend.text = element_text(size = 16),
+          plot.title = element_text(size = 24),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.background = element_rect(fill = '#9e9e9e',
+                                          colour = '#9e9e9e'))
+  if (metric == "rt") {
+    p <- p + geom_vline(xintercept = 1, lty = 2, color = "white", lwd = 1.5)
   }
   return(p)
 }
@@ -629,16 +631,13 @@ ui <- dashboardPage(
               sliderInput("forestPlot_date", label = "Date",
                           min = min_date, max = max_date,
                           value = max_date),
-              selectInput("forestPlot_metric", "Metric:",
-                          choices = list("Rt" = "rt",
-                                        "New cases/day" = "case",
-                                        "New deaths/day" = "death")),
+              radioButtons("forestPlot_metric", "Metric:",
+                          choices = list("Rt (effective reproduction number)" = "rt",
+                                          "Daily new cases per million" = "case",
+                                          "Daily new deaths per million" = "death")),
               selectInput("forestPlot_resolution", "Resolution:",
-                          choices = list("World" = "country",
-                                        "US States" = "state_USA",
-                                        "Canadian Provinces" = "state_Canada",
-                                        "Australian Provinces" = "state_Australia",
-                                        "Chinese Provinces" = "state_China"))
+                          choices = resolution_choices_noallus,
+                          selected = "subnat_USA")
             ), # end of sidebarPanel
             mainPanel(
               # Need UI output to dynamically set the size of the plots.
@@ -874,17 +873,39 @@ server <- function(input, output, session) {
   ## 3rd tab: Rt Forest plot
   ########################################################################
 
+  forestPlot_data <- reactive({
+    validate(need(input$forestPlot_date, "Please select a date."))
+    validate(need(input$forestPlot_metric, "Please select a metric."))
+    validate(need(input$forestPlot_resolution, "Please select a resolution."))
+    date_select <- format(input$forestPlot_date, "%Y-%m-%d")
+
+    # if selected resolution starts with 840 is 630 it's a US county
+    if (startsWith(input$forestPlot_resolution, "840") || input$forestPlot_resolution == "630") {
+      county_uids <- get_county_uids(input$forestPlot_resolution)
+      ret <- rt_long_all[resolution == "county" & date == date_select &
+                         ((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
+                           UID %in% county_uids$extra_uids), ]
+    } else {
+      ret <- rt_long_all[resolution == input$forestPlot_resolution &
+                         date == date_select, ]
+    }
+    ret
+  })
+
   output$RtForestPlot <- renderCachedPlot({
     validate(need(input$forestPlot_date, "Please select a date."))
     validate(need(input$forestPlot_metric, "Please select a metric."))
     validate(need(input$forestPlot_resolution, "Please select a resolution."))
     date_select <- format(input$forestPlot_date, "%Y-%m-%d")
 
-    p <- rt_long_all[resolution == input$forestPlot_resolution &
-                     date == date_select, ] %>%
-      forest_plot(input$forestPlot_resolution, date_select,
-                  metric = input$forestPlot_metric)
-    p
+    # set resolution to county if we get a state UID
+    resolution <- input$forestPlot_resolution
+    if (startsWith(input$forestPlot_resolution, "840") || input$forestPlot_resolution == "630") {
+      resolution <- "county"
+    }
+
+    forest_plot(forestPlot_data(), resolution, date_select,
+                metric = input$forestPlot_metric)
   }, cacheKeyExpr = { list(input$forestPlot_date, input$forestPlot_metric,
                            input$forestPlot_resolution) })
 
