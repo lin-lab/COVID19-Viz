@@ -505,7 +505,6 @@ ui <- dashboardPage(
       menuItem("Map", tabName = "Map"),
       menuItem("Compare Rt", tabName = "compare_rt"),
       menuItem("Forest Plot", tabName = "forest_plot"),
-      menuItem("Explore States", tabName = "explore_states"),
       menuItem("Table", tabName = "table"),
       menuItem("About", tabName = "about")
     )
@@ -625,43 +624,10 @@ ui <- dashboardPage(
             ) # end of mainPanel
           ) # end of sidebarLayout
         ), # end of tabItem
-        # 4th tab: explore states
-        tabItem("explore_states",
-          # controls at the top
-          fluidRow(
-            column(6,
-              h4("Select a state to explore."),
-              selectizeInput("state_select", label = "State",
-                            selected = "84000025",
-                            choices = place_choices$us_states_w_counties,
-                            multiple = FALSE)
-            ),
-            column(6, align = "center",
-              p("Note the Rt is lagged by 5 days."),
-              sliderInput("state_select_date", label = "Select date",
-                          min = min_date, max = max_date,
-                          value = max_date, animate = TRUE)
-            )
-          ),
-          # output at the bottom
-          fluidRow(
-            # These guys can have fixed height
-            column(6, align = "center",
-              plotOutput("RtOverTime_exploreState", height = "500px")
-            ),
-            column(6, align = "center",
-              leafletOutput("explore_states_out", height = "500px")
-            )
-          ),
-          uiOutput("explorestate_row2_ui"),
-          fluidRow(
-            h4(textOutput("Rt_table_explore_states_title")),
-            DT::DTOutput("Rt_table_explore_states"),
-            br(),
-            includeMarkdown("assets/Rt_table_footer.md")
-          )
-        ), # end of tabItem
+        # 4th tab: table of Rts and other metrics
         tabItem("table",
+          # TODO: Add column selector so user can pick which columns they want
+          # to see.
           fluidRow(
             box(width = 6,
               sliderInput("table_date", label = "Date",
@@ -902,128 +868,17 @@ server <- function(input, output, session) {
     validate(need(input$forestPlot_date, "Please select a date."))
     validate(need(input$forestPlot_metric, "Please select a metric."))
     validate(need(input$forestPlot_resolution, "Please select a resolution."))
-    plt_height <-
-      switch(input$forestPlot_resolution,
-             country = "2000px",
-             state_USA = "900px",
-             state_Canada = "300px",
-             state_Australia = "300px",
-             state_China = "300px")
+    column_select <- switch(input$forestPlot_metric,
+                            "rt" = "rt",
+                            "case" = "case_rate",
+                            "death" = "death_rate")
+    num_rows <- sum(!is.na(forestPlot_data()[, ..column_select]))
+    plt_height <- sprintf("%dpx", max(20 * num_rows, 300))
     plotOutput("RtForestPlot", height = plt_height)
   })
 
-  ########################################################################
-  ## 4th tab: Explore states tab
-  ########################################################################
 
-  # change map polygons when state or date changes
-  prev_grpid_state_reactive <- reactiveValues(val = "")
-
-  # explore states map
-  output$explore_states_out <- renderLeaflet({
-    map_default <- leaflet(options = list(worldCopyJump = FALSE)) %>%
-      addProviderTiles(providers$Stamen.TonerLite,
-                        options = providerTileOptions(minZoom = 3)) %>%
-      setView(ma_center[1], ma_center[2], 7) %>%
-      setMaxBounds(-180, -90, 180, 90)
-    map_default
-    #ma_uid <- "84000025"
-    #counties_sf <- sf_by_date_res(max_date, metric = "rt",
-    #                              sel_resolution = "county", state_uid = ma_uid)
-    #labels_final <- master_labeller(counties_sf, max_date)
-    #pal <- pal_default(domain = counties_sf$Rt)
-    #cur_grpid <- digest::digest(list(max_date, ma_uid))
-    #ma_center <- state_centers$`84000025`
-    #suppressWarnings(
-    #  map_default <- leaflet(options = list(worldCopyJump = FALSE)) %>%
-    #    addProviderTiles(providers$Stamen.TonerLite,
-    #                     options = providerTileOptions(minZoom = 3)) %>%
-    #    setView(ma_center[1], ma_center[2], 7) %>%
-    #    setMaxBounds(-180, -90, 180, 90) %>%
-    #    addPolygon_Point(counties_sf, labels_final, cur_grpid) %>%
-    #    addLegend(colors = colors_default, labels = color_labels,
-    #              opacity = 0.7, title = "Rt", position = "bottomright")
-    #)
-    #prev_grpid_state_reactive$val <- cur_grpid
-    #map_default
-  })
-
-  # change zoom level only when state changes
-  observe({
-    state_input <- input$state_select
-    zoom_level <- set_state_zoom(state_input)
-    lnglat <- state_centers[[state_input]]
-    leafletProxy("explore_states_out") %>%
-      setView(lnglat[1], lnglat[2], zoom_level)
-  })
-
-  # change state county polygons when state or date changes
-  #observe({
-  #  date_select <- format(input$state_select_date, "%Y-%m-%d")
-  #  state_input <- input$state_select
-  #  validate(need(input$state_select_date,
-  #                "Please choose a date using the slider."))
-  #  validate(need(input$state_select, "Please choose a state."))
-
-  #  counties_sf_cur <- sf_by_date_res(input$state_select_date, "rt", "county",
-  #                                    state_input)
-  #  labels_final <- master_labeller(counties_sf_cur, date_select)
-  #  pal <- pal_default(domain = counties_sf_cur$Rt)
-  #  cur_grpid <- digest::digest(list(date_select, state_input))
-  #  prev_grpid <- prev_grpid_state_reactive$val
-  #  map_state <- leafletProxy("explore_states_out", data = counties_sf_cur)
-  #  if (prev_grpid != cur_grpid) {
-  #    suppressWarnings({
-  #      map_state <- map_state %>%
-  #        addPolygon_Point(counties_sf_cur, labels_final, cur_grpid) %>%
-  #        clearGroup(prev_grpid)
-  #    })
-  #  }
-  #  prev_grpid_state_reactive$val <- cur_grpid
-  #  map_state
-  #})
-
-  # Render plot of Rt over time on click
-  output$RtOverTime_exploreState <- renderCachedPlot({
-    validate(need(input$explore_states_out_shape_click,
-                  message = "Click on a county to show Rt and new cases over time."))
-    click <- input$explore_states_out_shape_click
-    plt_dat <- rt_long_all[UID == click$id, ]
-    if (nrow(plt_dat) > 0) {
-      suppressWarnings(click_plot(plt_dat))
-    }
-  }, cacheKeyExpr = { input$explore_states_out_shape_click$id })
-
-
-  # update county_rt_long data frame
-  county_rt_long_update <- reactive({
-    validate(need(input$state_select, message = "Please select a state."))
-    county_uids <- get_county_uids(input$state_select)
-    rt_long_all[(UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
-                    UID %in% county_uids$extra_uids, ]
-  })
-
-  num_counties <- reactive({
-    df_with_rts <- county_rt_long_update() %>%
-      filter(Rt_plot > 0)
-    length(unique(df_with_rts$UID))
-  })
-
-  output$explorestate_row2_ui <- renderUI({
-    validate(need(input$state_select, message = "Please select a state."))
-    row_height <- 200 + 20 * num_counties()
-    fluidRow(
-      column(6, align = "center",
-        plotOutput("explore_states_counties", height = row_height)
-      ),
-      column(6, align = "center",
-        plotOutput("RtForestPlot_exploreState", height = row_height)
-      )
-    )
-
-  })
-
-
+  # TODO: Put this on the main map page
   # render heatmap of counties over time
   output$explore_states_counties <- renderCachedPlot({
     validate(need(input$state_select, message = "Please select a state."))
@@ -1062,38 +917,6 @@ server <- function(input, output, session) {
     }
     p
   }, cacheKeyExpr = { input$state_select })
-
-  # render forest plot of Rts on selected date.
-  output$RtForestPlot_exploreState <- renderCachedPlot({
-    validate(need(input$state_select, message = "Please select a state."))
-    validate(need(input$state_select_date, message = "Please select a date."))
-    date_select <- format(input$state_select_date, "%Y-%m-%d")
-    county_rt_long_update() %>%
-      dplyr::filter(date_lag == date_select) %>%
-      forest_plot(resolution = "county", date_lag = date_select)
-  }, cacheKeyExpr = { list(input$state_select, input$state_select_date) })
-
-
-  # render table of county Rts at current date
-  output$Rt_table_explore_states <- DT::renderDT({
-    validate(need(input$state_select, message = "Please select a state."))
-    validate(need(input$state_select_date, message = "Please select a date."))
-    date_select <- format(input$state_select_date, "%Y-%m-%d")
-    county_rt_long_update() %>%
-      dplyr::filter(date_lag == date_select) %>%
-      munge_for_dt()
-  }, server = FALSE, rownames = TRUE, callback = dt_js_callback)
-
-  # title for county Rt tables
-  output$Rt_table_explore_states_title <- renderText({
-    req(input$state_select_date)
-    req(input$state_select)
-    date_lag <- format(input$state_select_date, "%Y-%m-%d")
-    date_actual <- format(input$state_select_date + 5, "%Y-%m-%d")
-    state_uid <- input$state_select
-    sprintf("Table of metrics on %s for %s. Rt calculated for %s (5-day lag).",
-            date_actual, state_uid_to_place[[state_uid]], date_lag)
-  })
 
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
   # this to allow the user to be automatically connected
