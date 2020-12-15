@@ -708,30 +708,56 @@ server <- function(input, output, session) {
   })
 
   # change the zoom level only when the resolution changes.
-  observe({
-    sel_resolution <- input$select_resolution
-    cur_view <- switch(sel_resolution,
-      "state_USA" = c(-96, 37.8, 4),
-      "state_Canada" = c(-100.78, 51.52, 3),
-      "state_China" = c(104.4, 34.7, 4),
-      "state_Australia" = c(135.5, -26.1, 4),
-      "county" = c(-96, 37.8, 4),
-      "country" = c(0, 30, 2)
-    )
-    suppressWarnings(
-      leafletProxy("map_main") %>%
-        setView(cur_view[1], cur_view[2], cur_view[3])
-    )
-  })
-
   # update the data based on values
   sf_dat_update <- reactive({
     validate(need(input$map_date, "Please select a date."))
     validate(need(input$select_resolution, "Please select a resolution."))
     validate(need(input$map_metric, "Please select a metric."))
+
+    # if selected resolution starts with 840 is 630 it's a US county
+    if (startsWith(input$select_resolution, "840") || input$select_resolution == "630") {
+      resolution <- "county"
+      state_uid <- input$select_resolution
+    } else {
+      resolution <- input$select_resolution
+      state_uid <- NULL
+    }
     sf_by_date_res(input$map_date, metric = input$map_metric,
-                   sel_resolution = input$select_resolution, state_uid = NULL)
+                   sel_resolution = resolution, state_uid = state_uid)
   })
+
+  observe({
+    # set a reactive dependency on select_resolution, but not on sf_dat_update
+    res <- input$select_resolution
+    isolate({
+      sf_dat_cur <- sf_dat_update()
+    })
+
+    # by default, use bounding box, but these are exceptions where the bounding
+    # box doesn't work
+    cur_view <- switch(res,
+                       "subnat_USA" = c(-96, 37.8, 4),
+                       "county" = c(-96, 37.8, 4),
+                       "subnat_Canada" = c(-100.78, 51.52, 3),
+                       "84000002" = c(-147, 61.31395, 4),
+                       NULL)
+
+    if (is.null(cur_view)) {
+      bbox <- as.numeric(st_bbox(sf_dat_cur))
+      suppressWarnings(
+        leafletProxy("map_main", session) %>%
+          fitBounds(lng1 = bbox[1], lat1 = bbox[2], lng2 = bbox[3],
+                    lat2 = bbox[4])
+      )
+    } else {
+      suppressWarnings(
+        leafletProxy("map_main", session) %>%
+          setView(cur_view[1], cur_view[2], cur_view[3])
+      )
+    }
+
+  })
+
 
   # keep track of previous group ID so we can clear its shapes
   prev_grpid_all_reactive <- reactiveValues(val = "")
