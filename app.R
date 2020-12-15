@@ -30,6 +30,9 @@ BASE_PATH <- "clean_data_pois"
 
 #' Read a specified file locally if it exists, else read from AWS
 #'
+#' When the site is live, we basically are only going to read from AWS. I wrote
+#' this function because when I was testing the app locally, it was annoying to
+#' constantly fetch data from AWS instead of using local data.
 read_aws_or_local <- function(fname, base_url = BASE_URL,
                               base_path = BASE_PATH) {
   stopifnot(endsWith(fname, ".rds"))
