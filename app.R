@@ -115,6 +115,28 @@ dates <- unique(rt_long_all$date)
 min_date <- min(dates)
 max_date <- max(dates)
 
+resolution_uniq <- unique(rt_long_all$resolution)
+resolution_names <- data.table(orig = resolution_uniq)
+resolution_names[, c("resolution", "country") := tstrsplit(orig, "_", fixed = TRUE)]
+resolution_names[, pretty := fcase(orig == "country", "World",
+                                   orig == "subnat_USA", "US States",
+                                   orig == "county", "All US Counties",
+                                   startsWith(orig, "subnat"),
+                                   paste0(country, " Subnational"))]
+setorderv(resolution_names, cols = "country")
+
+resolution_choices <- list("World" = "country")
+subnat_choices <- as.list(resolution_names[resolution == "subnat", orig])
+names(subnat_choices) <- resolution_names[resolution == "subnat", pretty]
+resolution_choices$Subnational <- subnat_choices
+resolution_choices$County <- c(place_choices$us_states_w_counties, list(`All US Counties` = "county"))
+
+# omitting all us counties. We won't draw forest plots / heatmaps for all US
+# counties.
+resolution_choices_noallus <- list(World = "country",
+                                   Subnational = subnat_choices,
+                                   County = place_choices$us_states_w_counties)
+
 # This javascript callback re-numbers DT::datatables rows after sorting.
 # Source: https://stackoverflow.com/questions/35502931/automatic-row-numbers-after-filtering-dt-in-shiny
 dt_js_callback = JS("table.on( 'order.dt search.dt', function () {
@@ -162,11 +184,19 @@ master_labeller <- function(sf_dat, date_select, metric) {
 get_county_uids <- function(state_uid_str) {
   # MA, UT, MO have extra counties
   extra_states <- c("84000025", "84000049", "84000029")
-  state_id <- as.numeric(state_uid_str) %% 100
+  state_uid <- as.integer(state_uid_str)
+  state_id <- state_uid %% 100
 
-  # based on the UID lookup table logic from JHU data
-  state_uid_lwr <- 84000000 + state_id * 1e3
-  state_uid_upr <- state_uid_lwr + 1e3
+  if (state_uid == 630) {
+    # Puerto Rico
+    state_uid_lwr <- 63072000
+    state_uid_upr <- 63073000
+  } else {
+    # based on the UID lookup table logic from JHU data
+    state_uid_lwr <- 84000000 + state_id * 1e3
+    state_uid_upr <- state_uid_lwr + 1e3
+  }
+
   if (state_uid_str %in% extra_states) {
     extra_uids <- switch(state_uid_str,
       `84000025` = 84070002,
@@ -188,12 +218,8 @@ get_county_uids <- function(state_uid_str) {
 #' @param state_uid A state UID string. If non-null, uses the state UID to
 #' select the counties in that state. See get_county_uids.
 sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
-                           sel_resolution = c("state_USA", "state_Canada",
-                                              "state_China", "state_Australia",
-                                              "county", "country"),
-                           state_uid = NULL) {
+                           sel_resolution, state_uid = NULL) {
   metric <- match.arg(metric)
-  sel_resolution <- match.arg(sel_resolution)
   date_str <- format(date_select, "%Y-%m-%d")
   rate_col <- ifelse(metric == "rt", paste0(metric, "_", date_str),
                      paste0(metric, "_rate_", date_str))
@@ -214,6 +240,7 @@ sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
                       UID %in% county_uids$extra_uids) %>%
       dplyr::select(!!select_cols)
   }
+  stopifnot(nrow(ret_sf) >= 1)
   names(ret_sf) <- c("estimate", "ci_lower", "ci_upper", "UID", "dispID", "geometry")
   return(ret_sf)
 }
@@ -541,18 +568,14 @@ ui <- dashboardPage(
             ), # end of column 1
             column(width = 4,
               radioButtons("map_metric", "Metric:",
-                          choices = list("Rt" = "rt",
-                                          "New cases/day" = "case",
-                                          "New deaths/day" = "death")),
+                          choices = list("Rt (effective reproduction number)" = "rt",
+                                          "Daily new cases per million" = "case",
+                                          "Daily new deaths per million" = "death")),
             ), # end of column 2
             column(width = 4,
               selectInput("select_resolution", "Resolution:",
-                          choices = list("World" = "country",
-                                        "US States" = "state_USA",
-                                        "US Counties" = "county",
-                                        "Canadian Provinces" = "state_Canada",
-                                        "Australian Provinces" = "state_Australia",
-                                        "Chinese Provinces" = "state_China"))
+                          choices = resolution_choices,
+                          selected = "subnat_USA")
             ) # end of column 3
           ), # end of fluidRow 1
           fluidRow(
@@ -636,12 +659,7 @@ ui <- dashboardPage(
             ), # end of box 1
             box(width = 6,
               selectInput("table_select_resolution", "Resolution:",
-                          choices = list("World" = "country",
-                                         "US States" = "state_USA",
-                                         "US Counties" = "county",
-                                         "Canadian Provinces" = "state_Canada",
-                                         "Australian Provinces" = "state_Australia",
-                                         "Chinese Provinces" = "state_China"))
+                          choices = resolution_choices)
             ) # end of box 2
           ), # end of fluidRow 1
           fluidRow(
