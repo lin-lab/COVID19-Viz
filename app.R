@@ -658,7 +658,8 @@ ui <- dashboardPage(
             ), # end of box 1
             box(width = 6,
               selectInput("table_select_resolution", "Resolution:",
-                          choices = resolution_choices)
+                          choices = resolution_choices,
+                          selected = "subnat_USA")
             ) # end of box 2
           ), # end of fluidRow 1
           fluidRow(
