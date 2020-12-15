@@ -816,32 +816,12 @@ server <- function(input, output, session) {
     validate(need(input$map_main_shape_click,
                   message = "Click on a location to show Rt and new cases over time."))
     click <- input$map_main_shape_click
-    print(click)
     plt_dat <- rt_long_all[UID == click$id, ]
     if (nrow(plt_dat) > 0) {
       suppressWarnings(click_plot(plt_dat))
     }
   }, cacheKeyExpr = { input$map_main_shape_click$id })
 
-  output$Rt_table_title <- renderText({
-    date_actual <- format(input$map_date, "%Y-%m-%d")
-    req(date_actual)
-    sprintf("Table of metrics for %s.", date_actual)
-  })
-
-  # Table of current Rts at current resolution
-  output$Rt_table <- DT::renderDT({
-    date_select <- format(input$table_date, "%Y-%m-%d")
-    sel_resolution <- input$table_select_resolution
-    validate(need(date_select, "Please select a date."))
-    validate(need(sel_resolution, "Please select a resolution."))
-
-    ret_df <- rt_long_all[resolution == sel_resolution & date == date_select &
-                          positive >= 50, ] %>%
-        munge_for_dt()
-    validate(need(nrow(ret_df) > 0, "This data has no rows."))
-    ret_df
-  }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
 
 
 
@@ -921,6 +901,37 @@ server <- function(input, output, session) {
     plotOutput("RtForestPlot", height = plt_height)
   })
 
+  output$Rt_table_title <- renderText({
+    date_actual <- format(input$map_date, "%Y-%m-%d")
+    req(date_actual)
+    sprintf("Table of metrics for %s.", date_actual)
+  })
+
+  ########################################################################
+  ## 4th tab: Table of Rts and other metrics
+  ########################################################################
+
+  # Table of current Rts at current resolution
+  output$Rt_table <- DT::renderDT({
+    date_select <- format(input$table_date, "%Y-%m-%d")
+    sel_resolution <- input$table_select_resolution
+    validate(need(date_select, "Please select a date."))
+    validate(need(sel_resolution, "Please select a resolution."))
+
+    # if selected resolution starts with 840 is 630 it's a US county
+    if (startsWith(input$table_select_resolution, "840") || input$table_select_resolution == "630") {
+      county_uids <- get_county_uids(input$table_select_resolution)
+      ret_df <- rt_long_all[resolution == "county" & date == date_select &
+                           ((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
+                             UID %in% county_uids$extra_uids), ]
+    } else {
+      ret_df <- rt_long_all[resolution == input$table_select_resolution &
+                            date == date_select, ]
+    }
+
+    validate(need(nrow(ret_df) > 0, "This data has no rows."))
+    munge_for_dt(ret_df)
+  }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
 
   # TODO: Put this on the main map page
   # render heatmap of counties over time
