@@ -56,7 +56,7 @@ Rt_loess <- function(dat) {
 #' @param start_date Take times after this start date.
 #' @param end_date Take times before this end date.
 #'
-lag_subset_mod <- function(dt, group_var = "UID", nlag = 5,
+lag_subset_mod <- function(dt, group_var = "UID", nlag = 7,
                            window_size = 7, pos_cutoff = 50,
                            posincr_cutoff = 10,
                            start_date = ymd("2020-03-19"),

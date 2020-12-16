@@ -17,24 +17,45 @@ library(cowplot)
 library(htmltools)
 library(purrr)
 library(dplyr)
+library(RColorBrewer)
 
 ########################################################################
 ## Load data files
 ########################################################################
 
+BASE_URL <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files"
+BASE_PATH <- "clean_data"
+
+#' Read a specified file locally if it exists, else read from AWS
+#'
+#' When the site is live, we basically are only going to read from AWS. I wrote
+#' this function because when I was testing the app locally, it was annoying to
+#' constantly fetch data from AWS instead of using local data.
+read_aws_or_local <- function(fname, base_url = BASE_URL,
+                              base_path = BASE_PATH) {
+  stopifnot(endsWith(fname, ".rds"))
+  local_fname <- file.path(base_path, fname)
+  if (file.exists(local_fname)) {
+    ret <- readRDS(local_fname)
+  } else {
+    url <- sprintf("%s/%s", base_url, fname)
+    ret <- readRDS(url(url))
+  }
+  return(ret)
+}
+
 # shape file: wide data that has 1 row per location with all Rts, Rt CI's, and
 # shapes
-base_url <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files"
-sf_all <- readRDS(url(sprintf("%s/sf_all.rds", base_url)))
+sf_all <- read_aws_or_local("sf_all.rds")
 
 # long data frame of Rts
-rt_long_all <- readRDS(url(sprintf("%s/rt_long_all.rds", base_url)))
+rt_long_all <- read_aws_or_local("rt_long_all.rds")
 
 # choices for each place
-place_choices <- readRDS(url(sprintf("%s/names_list.rds", base_url)))
+place_choices <- read_aws_or_local("names_list.rds")
 
 # state centers
-state_centers <- readRDS(url(sprintf("%s/state_centers.rds", base_url)))
+state_centers <- read_aws_or_local("state_centers.rds")
 
 # map state UIDs to place name
 state_uid_to_place <- as.list(names(place_choices$us_state))
@@ -263,7 +284,7 @@ click_plot <- function(plt_dat) {
     geom_line(aes(y = Rt_loess_fit), colour = "#3366ff", lwd = 1.5) +
     coord_cartesian(ylim = c(0, ylim_max)) +
     geom_hline(yintercept = 1, lty = 2) +
-    xlab("Date (lagged 5 days)") + ylab("") + ggtitle(rt_plt_title) +
+    xlab("Date (lagged 7 days)") + ylab("") + ggtitle(rt_plt_title) +
     xlim(xlim_min, xlim_max) +
     theme_cowplot() +
     background_grid(major = "xy", minor = "xy") +
@@ -407,7 +428,7 @@ ui <- fluidPage(
         sidebarPanel(
           p("Use slider to adjust date. Click on an area to see its Rt over time."),
           p("Click play button to animate Rt over time."),
-          p("Note the Rt is lagged by 5 days."),
+          p("Note the Rt is lagged by 7 days."),
           sliderInput("RtDate", label = "Date",
                       min = min_date, max = max_date,
                       value = max_date,
@@ -436,7 +457,7 @@ ui <- fluidPage(
       sidebarLayout(
         sidebarPanel(
           h4("Select areas to compare their Rt."),
-          p("Note the Rt is lagged by 5 days."),
+          p("Note the Rt is lagged by 7 days."),
           p("Some areas may not appear in the plot for all time points because of insufficient data."),
           p("Occasionally, locations may have negative values for new cases because of reporting issues."),
           # break up the selection by state, county, and country
@@ -462,7 +483,7 @@ ui <- fluidPage(
         sidebarPanel(
           h4("Display a forest plot of Rt for a given resolution"),
           p("Use slider to adjust date."),
-          p("Note the Rt is lagged by 5 days."),
+          p("Note the Rt is lagged by 7 days."),
           sliderInput("forestPlot_date", label = "Date",
                       min = min_date, max = max_date,
                       value = max_date),
@@ -492,7 +513,7 @@ ui <- fluidPage(
                          multiple = FALSE)
         ),
         column(6, align = "center",
-          p("Note the Rt is lagged by 5 days."),
+          p("Note the Rt is lagged by 7 days."),
           sliderInput("state_select_date", label = "Select date",
                       min = min_date, max = max_date,
                       value = max_date, animate = TRUE)
@@ -673,7 +694,7 @@ server <- function(input, output, session) {
       rt_plt <- cur_dat %>%
         ggplot(aes(x = date_lag, y = Rt_plot, color = dispID, fill = dispID)) +
         geom_ribbon(aes(ymin = Rt_lwr, ymax = Rt_upr), alpha = 0.2) +
-        geom_line() + geom_point() + xlab("Date (lagged 5 days)") + ylab("Rt") +
+        geom_line() + geom_point() + xlab("Date (lagged 7 days)") + ylab("Rt") +
         ggtitle("Comparison of Rt") + ylim(0, ylim_max) +
         xlim(xlim_min, xlim_max) +
         geom_hline(yintercept = 1, lty = 2) +
@@ -869,7 +890,7 @@ server <- function(input, output, session) {
         ggplot(aes(x = date, y = County, fill = `Rt Range`, labels = Rt)) +
         geom_tile() +
         scale_fill_manual(drop = FALSE, values = color_pal) +
-        xlab("Date (lagged 5 days)") + ylab("County") + ggtitle(plt_title) +
+        xlab("Date (lagged 7 days)") + ylab("County") + ggtitle(plt_title) +
         theme_dark() +
         scale_y_discrete(limits = rev(levels(plt_data_pruned$County))) +
         theme(axis.text.y = element_text(size = 16),

@@ -7,3 +7,4 @@ an epidemic; if Rt = 1, the virus will spread locally and the disease is
 endemic; if Rt < 1, the virus will stop spreading and the disease will disappear
 eventually.
 
+On Dec 16, 2020, we changed the lag for Rt from 5 days to 7 days.

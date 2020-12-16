@@ -129,17 +129,17 @@ Because the number of reported cases on a particular day does not
 represent the number of people who contracted COVID-19 on that day, the
 Rt curve needs to be adjusted to account for the fact that people
 contract COVID-19 before their case gets counted. As a heuristic, we
-assume that there is a 5-day lag from the time a person contracts
+assume that there is a 7-day lag from the time a person contracts
 COVID-19 until they are reported as a case, so we shift the Rt curve
-back 5 days to reflect this. This assumes an average incubation period
-of 5 days, which includes an average latent period of 3 days and an
-average presymptomatic period 2 days (He, X., et al, 2020). Subjects are
-infectious during the presymptomatic period and are likely to test
-positive. This assumption also considers that with the increasing
-testing capacity, more presymptomatic and asymptomatic subjects are
-being tested. The length of delay is likely to vary between individuals,
-regions, and over time. See the Limitation section for further
-discussion.
+back 7 days to reflect this. This assumes an average incubation period
+of 7 days, which includes an average latent period of 3 days and an average
+presymptomatic period 2 days (He, X., et al, 2020), plus an additional delay of
+two days to account for the time between getting tested and receiving a test
+result. Subjects are infectious during the presymptomatic period and are likely
+to test positive. This assumption also considers that with the increasing
+testing capacity, more presymptomatic and asymptomatic subjects are being
+tested. The length of delay is likely to vary between individuals, regions, and
+over time. See the Limitation section for further discussion.
 
 ### Limitations
 
