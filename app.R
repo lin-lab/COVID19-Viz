@@ -636,9 +636,9 @@ server <- function(input, output, session) {
 
   output$Rt_table_title <- renderText({
     date_lag <- format(input$RtDate, "%Y-%m-%d")
-    date_actual <- format(input$RtDate + 5, "%Y-%m-%d")
+    date_actual <- format(input$RtDate + 7, "%Y-%m-%d")
     req(date_lag)
-    sprintf("Table of metrics for %s. Rt calculated for %s (5-day lag).",
+    sprintf("Table of metrics for %s. Rt calculated for %s (7-day lag).",
             date_actual, date_lag)
   })
 
