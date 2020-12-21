@@ -476,20 +476,21 @@ subnat_rt_wide <- subnat_rt_long %>%
                               starts_with("death_")))
 
 uniq_countries <- unique(subnat_rt_long$Country_Region)
-non_uk <- uniq_countries[uniq_countries != "United Kingdom"]
+# Handle UK, Chile, and India separately
+sep_countries <- c("United Kingdom", "India")
+select_countries <- uniq_countries[!(uniq_countries %in% sep_countries)]
+subnat_sf_orig <- ne_states(country = select_countries, returnclass = "sf")
 
-# be aware of spaces. Spaces after means this is a prefix, spaces before means
-# it's a postfix
-subnat_patt <- c("Province of " = "", "Community of " = "", " Province" = "",
-                 " Department" = "", " Prefecture" = "", " Region" = "",
-                 " County" = "", "Republic of " = "")
-subnat_sf_orig <- ne_states(country = non_uk, returnclass = "sf")
+# For UK, we only have England, Scotland, Wales, and Northern Ireland
 uk_sf <- ne_countries(country = "united kingdom", type = "map_units",
                       returnclass = "sf") %>%
   mutate(Combined_Key = paste0(name_long, ", United Kingdom"))
 
 sf_lst <- list()
-for (country in non_uk) {
+for (country in uniq_countries) {
+  if (country %in% sep_countries) {
+    next
+  }
   country_sf <- subnat_sf_orig %>%
     filter(admin == country)
   if (country == "Spain" || country == "Italy") {
@@ -507,20 +508,46 @@ for (country in non_uk) {
     tmp <- country_sf %>%
       mutate(name_noacc = stri_trans_general(name_en, "latin-ascii"))
   }
+
+  # be aware of spaces. Spaces after means this is a prefix, spaces before means
+  # it's a postfix
+  subnat_patt <- c("Province of " = "", "Community of " = "", " Province" = "",
+                  " Department" = "", " Prefecture" = "", " Region" = "",
+                  " County" = "", "Republic of " = "")
   final_sf <- tmp %>%
     mutate(name_clean = str_replace_all(name_noacc, subnat_patt),
            Combined_Key = paste0(name_clean, ", ", admin)) %>%
     select(Combined_Key, geometry, woe_name)
+
+  if (country == "Chile") {
+    final_sf <- final_sf %>%
+      filter(!(Combined_Key %in% c("Bio Bio, Chile", "Maule, Chile")))
+  }
   sf_lst[[country]] <- final_sf
 }
 sf_lst[["united kingdom"]] <- select(uk_sf, Combined_Key, geometry, woe_name = subunit)
 
+# For India, there was a new province created in 2014 that isn't updated on
+# rnaturalearth
+india_subnat_orig <- readRDS("~/Downloads/gadm36_IND_1_sf.rds")
+india_subnat <- india_subnat_orig %>%
+  mutate(Combined_Key = paste0(NAME_1, ", ", NAME_0)) %>%
+  select(Combined_Key, geometry, woe_name = NAME_1)
+sf_lst[["India"]] <- india_subnat
+
+chile_subnat <- readRDS("~/Downloads/gadm36_CHL_1_sf.rds") %>%
+  mutate(woe_name = stri_trans_general(NAME_1, "latin-ascii"),
+         Combined_Key = paste0(woe_name, ", ", NAME_0)) %>%
+  select(Combined_Key, geometry, woe_name) %>%
+  filter(woe_name %in% c("Bio-Bio", "Maule", "Nuble"))
+sf_lst[["Chile2"]] <- chile_subnat
+
 subnat_sf <- do.call(rbind, sf_lst)
 rownames(subnat_sf) <- NULL
 
-#relabel 45 subnational units to align rt/map dfs
+#relabel subnational units to align rt/map dfs
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Federal District, Brazil"] ="Distrito Federal, Brazil"
-subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bio Bio, Chile"] ="Biobio, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bio-Bio, Chile"] ="Biobio, Chile"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Khmelnytsky Oblast, Ukraine"] ="Khmelnytskyi Oblast, Ukraine"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Zaporizhzhya Oblast, Ukraine"] ="Zaporizhia Oblast, Ukraine"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sodermanland, Sweden"] ="Sormland, Sweden"
@@ -536,7 +563,7 @@ subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Cataluna, Spain"] ="Catalonia, S
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Valenciana, Spain"] ="C. Valenciana, Spain"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Jamtland, Sweden"] ="Jamtland Harjedalen, Sweden"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Archipelago of Saint Andrews, Colombia"] ="San Andres y Providencia, Colombia"
-subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Magallanes y la Antartica Chilena, Chile"] ="Magallanes, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Magallanes y la Antartica Chilena, Chile"] <- "Magallanes, Chile"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bogota, Colombia"] ="Capital District, Colombia"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sicily, Italy"] ="Sicilia, Italy"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Santiago Metropolitan, Chile"] ="Metropolitana, Chile"
@@ -564,23 +591,29 @@ subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tuva Republic, Russia"] ="Tyva R
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Adygea, Russia"] ="Adygea Republic, Russia"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Autonomous Crimea, Russia"] ="Crimea Republic*, Ukraine"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sevastopol, Russia"] ="Sevastopol*, Ukraine"
-
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Brussels-Capital, Belgium"] <- "Brussels, Belgium"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Luxembourg District, Belgium"] <- "Luxembourg, Belgium"
 subnat_sf$Combined_Key[subnat_sf$woe_name == "Kiev"] <- "Kiev Oblast, Ukraine"
 subnat_sf$Combined_Key[subnat_sf$woe_name == "Kiev City Municipality"] <- "Kiev, Ukraine"
-
 subnat_sf$Combined_Key[subnat_sf$woe_name == "Gorno-Altay"] <- "Altai Republic, Russia"
 subnat_sf$Combined_Key[subnat_sf$woe_name == "Altay"] <- "Altai Krai, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "NCT of Delhi, India"] <- "Delhi, India"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Andaman and Nicobar, India"] <- "Andaman and Nicobar Islands, India"
+
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Dadra and Nagar Haveli, India"] <- "Dadra and Nagar Haveli and Daman and Diu, India"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Daman and Diu, India"] <- "Dadra and Nagar Haveli and Daman and Diu, India"
 
 repeated_subnat <- subnat_sf %>%
   group_by(Combined_Key) %>%
   summarize(n = n()) %>%
   filter(n > 1) %>%
+  arrange(Combined_Key) %>%
   pull(Combined_Key)
 
-stopifnot(repeated_subnat == "Lima, Peru")
+stopifnot(repeated_subnat == c("Dadra and Nagar Haveli and Daman and Diu, India", "Lima, Peru"))
 
 # join together two versions of Lima, Peru (one is the city itself, one is the
-# area surrounding the city)
+# area surrounding the city) and join two Indian provinces
 subnat_sf <- subnat_sf %>%
   group_by(Combined_Key) %>%
   summarize(geometry = st_union(geometry)) %>%
@@ -603,16 +636,18 @@ subnat_rt_long_export <- subnat_rt_long[exported_subnats, on = "UID"] %>%
 subnat_rt_test <- subnat_rt_wide %>%
   select(Combined_Key, UID, Province_State, Country_Region)
 
+# provinces with no maps
+cat("Provinces with no map data:\n")
 subnat_rt_test %>%
   anti_join(subnat_sf, by = "Combined_Key") %>%
-  arrange(Country_Region) %>%
-  write_csv("country_no_maps.csv")
+  arrange(Country_Region)
 
+# maps with no COVID data
+cat("Maps with no COVID data:\n")
 subnat_sf %>%
   select(Combined_Key) %>%
   st_drop_geometry() %>%
-  anti_join(subnat_rt_test, by = "Combined_Key") %>%
-  write_csv("maps_no_country.csv")
+  anti_join(subnat_rt_test, by = "Combined_Key")
 
 ########################################################################
 ## International countries
