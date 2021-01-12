@@ -7,6 +7,8 @@
 #    http://shiny.rstudio.com/
 #
 
+library(jsonlite)
+library(httr)
 library(shiny)
 library(shinydashboard)
 library(leaflet)
@@ -20,6 +22,7 @@ library(purrr)
 library(dplyr)
 library(data.table)
 library(RColorBrewer)
+library(shinyStore)
 
 ########################################################################
 ## Load data files
@@ -27,6 +30,7 @@ library(RColorBrewer)
 
 BASE_URL <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files_pois"
 BASE_PATH <- "clean_data_pois"
+IP_API_KEY <- Sys.getenv("IPSTACK_API_KEY")
 
 #' Read a specified file locally if it exists, else read from AWS
 #'
@@ -149,6 +153,26 @@ dt_js_callback = JS("table.on( 'order.dt search.dt', function () {
 ########################################################################
 ## Define helper functions
 ########################################################################
+
+#' Query IP Address for geolocation
+query_ip <- function(ip, key = IP_API_KEY) {
+  message(sprintf("Querying ip address %s...", ip))
+  res <- GET("http://api.ipstack.com", path = ip,
+             query = list(access_key = key))
+  ret <- list(latitude = -999, longitude = -999, place_str = "Not Detected",
+              ipaddr = ip)
+  if (res$status == 200) {
+    dat <- fromJSON(rawToChar(res$content))
+    if (!is.null(dat$latitude) && !is.null(dat$longitude)) {
+      ret <- list()
+      ret$latitude <- dat$latitude
+      ret$longitude <- dat$longitude
+      ret$place_str <- with(dat, paste(city, region_name, country_name,
+                                       sep = ", "))
+    }
+  }
+  return(ret)
+}
 
 #' Generate labels for Rt, case rate, or death rate.
 #'
@@ -529,7 +553,8 @@ compare_plot <- function(dt, metric_lst) {
 ## Define UI
 ########################################################################
 
-ui <- dashboardPage(
+ui <- function(req) {
+  dashboardPage(
   dashboardHeader(title = "Visualizing COVID-19 Spread Metrics",
                   titleWidth = 450),
   dashboardSidebar(
@@ -550,6 +575,7 @@ ui <- dashboardPage(
         ".leaflet .legend i{float: left;}",
         ".leaflet .legend label{float:left; text-align: left;}"
     )),
+    initStore("store", "shinyStore"),
     # This allows all links to be opened in a new tab. Fixes issue where links
     # sometimes refuse to connect.
     tags$head(tag("base", varArgs = list(target = "_blank"))),
@@ -588,6 +614,10 @@ ui <- dashboardPage(
             # plot of Rt over time
             column(4, plotOutput("map_click_plot", height = "600px"))
           ), # end of fluidRow 2
+          # TODO: Testing out location detection
+          fluidRow(
+            textOutput("ip_addr")
+          ),
         ), # end of tabItem
         # Second tab: Compare Rt across different regions.
         tabItem("compare_rt",
@@ -679,10 +709,22 @@ ui <- dashboardPage(
             )
           }) # end of withTags
         ) # end of tabItem
-      ) # end of tabItems
+      ), # end of tabItems
+
+      # Invisible div to get the user's IP address, sourced from:
+      # https://github.com/rstudio/shiny/issues/141#issuecomment-351857670
+      div(style = "display: none;",
+        textInput("remote_addr", "remote_addr",
+          if (!is.null(req[["HTTP_X_FORWARDED_FOR"]]))
+            req[["HTTP_X_FORWARDED_FOR"]]
+          else
+            req[["REMOTE_ADDR"]]
+        )
+      ), # end of div
     ) # end of fluidPage
   ) # end of dashboardBody
 ) # end of dashboardPage
+}
 
 ########################################################################
 ## Define Server function
@@ -690,6 +732,21 @@ ui <- dashboardPage(
 
 server <- function(input, output, session) {
   cdata <- session$clientData
+
+  ########################################################################
+  ## Query the IP address for geolocation
+  ########################################################################
+  cat("The remote IP is", isolate(input$remote_addr), "\n")
+
+  loc_info <- reactive({
+    ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
+    if (is.null(input$store$loc_info)) {
+      ipinfo <- query_ip(ipaddr)
+      updateStore(session, "loc_info", ipinfo)
+    }
+    input$store$loc_info
+  })
+
 
   ########################################################################
   ## 1st tab: Big Rt Map
@@ -713,9 +770,9 @@ server <- function(input, output, session) {
   # change the zoom level only when the resolution changes.
   # update the data based on values
   sf_dat_update <- reactive({
-    validate(need(input$map_date, "Please select a date."))
-    validate(need(input$select_resolution, "Please select a resolution."))
-    validate(need(input$map_metric, "Please select a metric."))
+    shiny::validate(need(input$map_date, "Please select a date."))
+    shiny::validate(need(input$select_resolution, "Please select a resolution."))
+    shiny::validate(need(input$map_metric, "Please select a metric."))
 
     # if selected resolution starts with 840 is 630 it's a US county
     if (startsWith(input$select_resolution, "840") || input$select_resolution == "630") {
@@ -769,9 +826,9 @@ server <- function(input, output, session) {
   observe({
     date_select <- format(input$map_date, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
-    validate(need(date_select, "Please select a date."))
-    validate(need(sel_resolution, "Please select a resolution."))
-    validate(need(input$map_metric, "Please select a metric."))
+    shiny::validate(need(date_select, "Please select a date."))
+    shiny::validate(need(sel_resolution, "Please select a resolution."))
+    shiny::validate(need(input$map_metric, "Please select a metric."))
     sf_dat_cur <- sf_dat_update()
     labels_final <- master_labeller(sf_dat_cur, date_select, input$map_metric)
     cur_grpid <- digest::digest(c(date_select, sel_resolution,
@@ -792,7 +849,7 @@ server <- function(input, output, session) {
 
   # change the legend when the map metric changes
   observe({
-    validate(need(input$map_metric, "Please select a metric."))
+    shiny::validate(need(input$map_metric, "Please select a metric."))
     map <- leafletProxy("map_main")
     legend_params <- switch(input$map_metric,
       "rt" = list(cur_colors = colors_rt, cur_labels = rt_color_labels,
@@ -816,8 +873,8 @@ server <- function(input, output, session) {
 
   # Rt over time based on click
   output$map_click_plot <- renderCachedPlot({
-    validate(need(input$map_main_shape_click,
-                  message = "Click on a location to show Rt and new cases over time."))
+    shiny::validate(need(input$map_main_shape_click,
+                         message = "Click on a location to show Rt and new cases over time."))
     click <- input$map_main_shape_click
     plt_dat <- rt_long_all[UID == click$id, ]
     if (nrow(plt_dat) > 0) {
@@ -825,8 +882,15 @@ server <- function(input, output, session) {
     }
   }, cacheKeyExpr = { input$map_main_shape_click$id })
 
-
-
+  output$ip_addr <- renderText({
+    tryCatch({
+      with(loc_info(),
+          sprintf("lat: %0.2f, long: %0.2f, %s, %s",
+                  latitude, longitude, place_str, ipaddr))
+    }, error = function(e) {
+      NULL
+    })
+  })
 
   ########################################################################
   ## 2nd tab: Compare Rt
@@ -842,7 +906,7 @@ server <- function(input, output, session) {
       UID = as.double(c(selected_states, selected_counties, selected_countries))
     )
 
-    validate(need(nrow(selected_uids) > 0, "Please select some locations."))
+    shiny::validate(need(nrow(selected_uids) > 0, "Please select some locations."))
 
     # inner join
     rt_long_all[selected_uids, on = "UID", nomatch = NULL]
@@ -851,7 +915,7 @@ server <- function(input, output, session) {
   # generate the plot of Rt comparisons after user hits submit
   output$compare_plt_out <- renderPlot({
     cur_dat <- compare_plt_data()
-    validate(need(nrow(cur_dat) > 0,
+    shiny::validate(need(nrow(cur_dat) > 0,
                   "Insufficient data for selected locations."))
 
     # use isolate() to avoid dependency on input$compare_metric; dependency is
@@ -878,9 +942,9 @@ server <- function(input, output, session) {
   ########################################################################
 
   forestPlot_data <- reactive({
-    validate(need(input$forestPlot_date, "Please select a date."))
-    validate(need(input$forestPlot_metric, "Please select a metric."))
-    validate(need(input$forestPlot_resolution, "Please select a resolution."))
+    shiny::validate(need(input$forestPlot_date, "Please select a date."))
+    shiny::validate(need(input$forestPlot_metric, "Please select a metric."))
+    shiny::validate(need(input$forestPlot_resolution, "Please select a resolution."))
     date_select <- format(input$forestPlot_date, "%Y-%m-%d")
 
     # if selected resolution starts with 840 is 630 it's a US county
@@ -897,9 +961,9 @@ server <- function(input, output, session) {
   })
 
   output$RtForestPlot <- renderCachedPlot({
-    validate(need(input$forestPlot_date, "Please select a date."))
-    validate(need(input$forestPlot_metric, "Please select a metric."))
-    validate(need(input$forestPlot_resolution, "Please select a resolution."))
+    shiny::validate(need(input$forestPlot_date, "Please select a date."))
+    shiny::validate(need(input$forestPlot_metric, "Please select a metric."))
+    shiny::validate(need(input$forestPlot_resolution, "Please select a resolution."))
     date_select <- format(input$forestPlot_date, "%Y-%m-%d")
 
     # set resolution to county if we get a state UID
@@ -914,9 +978,9 @@ server <- function(input, output, session) {
                            input$forestPlot_resolution) })
 
   output$RtForestPlot_ui <- renderUI({
-    validate(need(input$forestPlot_date, "Please select a date."))
-    validate(need(input$forestPlot_metric, "Please select a metric."))
-    validate(need(input$forestPlot_resolution, "Please select a resolution."))
+    shiny::validate(need(input$forestPlot_date, "Please select a date."))
+    shiny::validate(need(input$forestPlot_metric, "Please select a metric."))
+    shiny::validate(need(input$forestPlot_resolution, "Please select a resolution."))
     column_select <- switch(input$forestPlot_metric,
                             "rt" = "rt",
                             "case" = "case_rate",
@@ -940,8 +1004,8 @@ server <- function(input, output, session) {
   output$Rt_table <- DT::renderDT({
     date_select <- format(input$table_date, "%Y-%m-%d")
     sel_resolution <- input$table_select_resolution
-    validate(need(date_select, "Please select a date."))
-    validate(need(sel_resolution, "Please select a resolution."))
+    shiny::validate(need(date_select, "Please select a date."))
+    shiny::validate(need(sel_resolution, "Please select a resolution."))
 
     # if selected resolution starts with 840 is 630 it's a US county
     if (startsWith(input$table_select_resolution, "840") || input$table_select_resolution == "630") {
@@ -954,14 +1018,14 @@ server <- function(input, output, session) {
                             date == date_select, ]
     }
 
-    validate(need(nrow(ret_df) > 0, "This data has no rows."))
+    shiny::validate(need(nrow(ret_df) > 0, "This data has no rows."))
     munge_for_dt(ret_df)
   }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
 
   # TODO: Put this on the main map page
   # render heatmap of counties over time
   output$explore_states_counties <- renderCachedPlot({
-    validate(need(input$state_select, message = "Please select a state."))
+    shiny::validate(need(input$state_select, message = "Please select a state."))
     plt_data_pruned <- county_rt_long_update() %>%
       dplyr::filter(Rt_plot > 0) %>%
       dplyr::mutate(`Rt Range` = cut(Rt_plot, breaks = bins[-c(1, 2)],
