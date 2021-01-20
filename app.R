@@ -569,6 +569,7 @@ ui <- function(req) {
   dashboardBody(
     tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
     tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
+    tags$head(tags$script(src = "shinyjs_funs.js")),
     tags$head(includeHTML("assets/google-analytics.html")),
     tags$head(tags$style(
         ".leaflet .legend {text-align: left;}",
@@ -740,13 +741,57 @@ server <- function(input, output, session) {
 
   loc_info <- reactive({
     ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
-    if (is.null(input$store$loc_info)) {
+    ret <- NULL
+    if (is.null(input$store$loc_info) || input$store$loc_info$ipaddr != ipaddr) {
       ipinfo <- query_ip(ipaddr)
+      ret <- ipinfo
       updateStore(session, "loc_info", ipinfo)
+    } else {
+      message("Read value from storage")
+      # spin lock while waiting for storage to update
+      while (is.null(input$store$loc_info)) {
+        Sys.sleep(0.1)
+      }
+      ret <- input$store$loc_info
     }
-    input$store$loc_info
+    ret
   })
 
+  # set resolution of map based on location
+  observe({
+    loc_info()
+    lat <- 42.34663009643555
+    long <- -71.11839294433594
+    latlong_dat <- data.frame(Latitude = lat, Longitude = long)
+
+    latlong_sf <- latlong_dat %>%
+      st_as_sf(coords = c("Longitude", "Latitude"), crs = st_crs(sf_all))
+
+    intersected <- suppressMessages({
+      st_intersects(latlong_sf, sf_all)
+    })
+    sf_options <- sf_all[unlist(intersected), ] %>%
+      select(dispID, resolution, UID)
+
+    res_options <- sf_options$resolution
+    #stopifnot(length(res_options) == uniqueN(res_options))
+    #subnat_options <- startsWith(res_options, "subnat_")
+
+    if ("county" %in% res_options) {
+      set_res <- sf_options %>%
+        filter(resolution == "subnat_USA") %>%
+        pull(UID) %>%
+        as.character()
+    } else if (any(startsWith(res_options, "subnat_"))) {
+      set_res <- sf_options %>%
+        filter(resolution == "country") %>%
+        pull(UID) %>%
+        as.character()
+    } else {
+      set_res <- "country"
+    }
+    session$sendCustomMessage("defaultResolution", set_res)
+  })
 
   ########################################################################
   ## 1st tab: Big Rt Map
@@ -883,13 +928,8 @@ server <- function(input, output, session) {
   }, cacheKeyExpr = { input$map_main_shape_click$id })
 
   output$ip_addr <- renderText({
-    tryCatch({
-      with(loc_info(),
-          sprintf("lat: %0.2f, long: %0.2f, %s, %s",
-                  latitude, longitude, place_str, ipaddr))
-    }, error = function(e) {
-      NULL
-    })
+    with(loc_info(),
+         sprintf("Your location was automatically detected as: %s", place_str))
   })
 
   ########################################################################
