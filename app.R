@@ -764,7 +764,7 @@ server <- function(input, output, session) {
   loc_info <- reactive({
     ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
     ret <- NULL
-    if (is.null(input$store$loc_info) || input$store$loc_info$ipaddr != ipaddr) {
+    if (is.null(input$store$loc_info))
       ipinfo <- query_ip(ipaddr)
       ret <- ipinfo
       updateStore(session, "loc_info", ipinfo)
