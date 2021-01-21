@@ -118,9 +118,8 @@ addCircles_default <-
                   fillOpacity = 0.7, bringToFront = TRUE))
 
 # get range of possible dates
-dates <- unique(rt_long_all$date)
-min_date <- min(dates)
-max_date <- max(dates)
+date_real_range <- range(rt_long_all$date)
+date_lag_range <- range(rt_long_all$date_lag)
 
 resolution_uniq <- unique(rt_long_all$resolution)
 resolution_names <- data.table(orig = resolution_uniq)
@@ -388,6 +387,7 @@ click_plot <- function(plt_dat) {
 }
 
 #' Preprocess data frame to be displayed by DT.
+# TODO: Handle Rt / date lag situation
 munge_for_dt <- function(df) {
   df_subset <- df[, .(dispID, positive, death, rt, rt_lower, rt_upper,
                       case_rate, case_lower, case_upper, death_rate,
@@ -549,6 +549,27 @@ compare_plot <- function(dt, metric_lst) {
   return(plt_lst)
 }
 
+#' Update date slider
+date_slider_update <- function(session, id, cur_slider_val, metric = "not rt",
+                               ...) {
+  if (metric == "rt") {
+    min_date <- date_lag_range[1]
+    max_date <- date_lag_range[2]
+  } else {
+    min_date <- date_real_range[1]
+    max_date <- date_real_range[2] - 1
+  }
+  new_slider_val <- cur_slider_val
+  if (is.null(new_slider_val) || is.na(new_slider_val) ||
+      new_slider_val > max_date) {
+    new_slider_val <- max_date
+  } else if (new_slider_val < min_date) {
+    new_slider_val <- min_date
+  }
+  updateSliderInput(session, id, min = min_date, max = max_date,
+                    value = new_slider_val)
+}
+
 ########################################################################
 ## Define UI
 ########################################################################
@@ -593,10 +614,11 @@ ui <- function(req) {
           ),
           fluidRow(
             column(width = 4,
-              sliderInput("map_date", label = "Date",
-                          min = min_date, max = max_date,
-                          value = max_date,
-                          animate = animationOptions(interval = 3000))
+                   sliderInput("map_date", label = "Date",
+                               min = date_lag_range[1],
+                               max = date_lag_range[2],
+                               value = date_lag_range[2],
+                               animate = animationOptions(interval = 1000))
             ), # end of column 1
             column(width = 4,
               radioButtons("map_metric", "Metric:",
@@ -615,7 +637,6 @@ ui <- function(req) {
             # plot of Rt over time
             column(4, plotOutput("map_click_plot", height = "600px"))
           ), # end of fluidRow 2
-          # TODO: Testing out location detection
           fluidRow(
             textOutput("ip_addr")
           ),
@@ -663,8 +684,8 @@ ui <- function(req) {
               p("Use slider to adjust date."),
               p("Note the Rt is lagged by 5 days."),
               sliderInput("forestPlot_date", label = "Date",
-                          min = min_date, max = max_date,
-                          value = max_date),
+                          min = date_real_range[1], max = date_real_range[2] - 1,
+                          value = date_real_range[2] - 1),
               radioButtons("forestPlot_metric", "Metric:",
                           choices = list("Rt (effective reproduction number)" = "rt",
                                           "Daily new cases per million" = "case",
@@ -687,8 +708,8 @@ ui <- function(req) {
           fluidRow(
             box(width = 6,
               sliderInput("table_date", label = "Date",
-                          min = min_date, max = max_date,
-                          value = max_date)
+                          min = date_real_range[1], max = date_real_range[2] - 1,
+                          value = date_real_range[2] - 1)
             ), # end of box 1
             box(width = 6,
               selectInput("table_select_resolution", "Resolution:",
@@ -697,6 +718,7 @@ ui <- function(req) {
             ) # end of box 2
           ), # end of fluidRow 1
           fluidRow(
+              h2(textOutput("Rt_table_title")),
               DT::DTOutput("Rt_table"),
               br(),
               includeMarkdown("assets/Rt_table_footer.md")
@@ -757,45 +779,50 @@ server <- function(input, output, session) {
     ret
   })
 
-  # set resolution of map based on location
-  observe({
-    loc_info()
-    lat <- 42.34663009643555
-    long <- -71.11839294433594
-    latlong_dat <- data.frame(Latitude = lat, Longitude = long)
-
-    latlong_sf <- latlong_dat %>%
-      st_as_sf(coords = c("Longitude", "Latitude"), crs = st_crs(sf_all))
-
-    intersected <- suppressMessages({
-      st_intersects(latlong_sf, sf_all)
-    })
-    sf_options <- sf_all[unlist(intersected), ] %>%
-      select(dispID, resolution, UID)
-
-    res_options <- sf_options$resolution
-    #stopifnot(length(res_options) == uniqueN(res_options))
-    #subnat_options <- startsWith(res_options, "subnat_")
-
-    if ("county" %in% res_options) {
-      set_res <- sf_options %>%
-        filter(resolution == "subnat_USA") %>%
-        pull(UID) %>%
-        as.character()
-    } else if (any(startsWith(res_options, "subnat_"))) {
-      set_res <- sf_options %>%
-        filter(resolution == "country") %>%
-        pull(UID) %>%
-        as.character()
-    } else {
-      set_res <- "country"
-    }
-    session$sendCustomMessage("defaultResolution", set_res)
-  })
-
   ########################################################################
   ## 1st tab: Big Rt Map
   ########################################################################
+
+
+  # set resolution of map based on location
+  observe({
+    # TODO: Replace these hard-coded values
+    loc_info_cur <- loc_info()
+    lat <- loc_info_cur$latitude
+    long <- loc_info_cur$longitude
+    latlong_dat <- data.frame(Latitude = lat, Longitude = long)
+    if (nrow(latlong_dat) == 0 || lat < -900 || long < -900) {
+      set_res <- "country"
+    } else {
+      latlong_sf <- latlong_dat %>%
+        st_as_sf(coords = c("Longitude", "Latitude"), crs = st_crs(sf_all))
+
+      intersected <- suppressMessages({
+        st_intersects(latlong_sf, sf_all)
+      })
+      sf_options <- sf_all[unlist(intersected), ] %>%
+        select(dispID, resolution, UID)
+
+      res_options <- sf_options$resolution
+      #stopifnot(length(res_options) == uniqueN(res_options))
+      #subnat_options <- startsWith(res_options, "subnat_")
+
+      if ("county" %in% res_options) {
+        set_res <- sf_options %>%
+          filter(resolution == "subnat_USA") %>%
+          pull(UID) %>%
+          as.character()
+      } else if (any(startsWith(res_options, "subnat_"))) {
+        set_res <- sf_options %>%
+          filter(resolution == "country") %>%
+          pull(UID) %>%
+          as.character()
+      } else {
+        set_res <- "country"
+      }
+    }
+    updateSelectInput(session, "select_resolution", selected = set_res)
+  })
 
   # The basic big Rt map
   output$map_main <- renderLeaflet({
@@ -804,7 +831,7 @@ server <- function(input, output, session) {
         setView(0, 30, 2) %>%
         setMaxBounds(-180, -90, 180, 90) %>%
         addProviderTiles(providers$Stamen.TonerLite,
-                         options = providerTileOptions(minZoom = 1,
+                         options = providerTileOptions(minZoom = 2,
                                                        noWrap = TRUE)) %>%
         addLegend(colors = colors_rt, labels = rt_color_labels,
                   opacity = 0.7, title = "Rt", position = "bottomleft",
@@ -892,9 +919,16 @@ server <- function(input, output, session) {
     map
   })
 
-  # change the legend when the map metric changes
+  # change the legend and date slider when the map metric changes
   observe({
     shiny::validate(need(input$map_metric, "Please select a metric."))
+
+    # part for changing the date slider
+    date_slider_update(session, "map_date", input$map_date,
+                       metric = input$map_metric)
+
+
+    # part for changing the map
     map <- leafletProxy("map_main")
     legend_params <- switch(input$map_metric,
       "rt" = list(cur_colors = colors_rt, cur_labels = rt_color_labels,
@@ -1030,15 +1064,24 @@ server <- function(input, output, session) {
     plotOutput("RtForestPlot", height = plt_height)
   })
 
-  output$Rt_table_title <- renderText({
-    date_actual <- format(input$map_date, "%Y-%m-%d")
-    req(date_actual)
-    sprintf("Table of metrics for %s.", date_actual)
+  # change date range on forest plot on update of metric
+  observe({
+    shiny::validate(need(input$forestPlot_metric, "Please select a metric."))
+
+    # part for changing the date slider
+    date_slider_update(session, "forestPlot_date", input$forestPlot_date,
+                       metric = input$forestPlot_metric)
   })
+
 
   ########################################################################
   ## 4th tab: Table of Rts and other metrics
   ########################################################################
+  output$Rt_table_title <- renderText({
+    date_actual <- format(input$table_date, "%B %d, %Y")
+    req(date_actual)
+    sprintf("Table of metrics for %s.", date_actual)
+  })
 
   # Table of current Rts at current resolution
   output$Rt_table <- DT::renderDT({
