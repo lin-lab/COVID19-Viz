@@ -163,7 +163,6 @@ query_ip <- function(ip, key = IP_API_KEY) {
   if (res$status == 200) {
     dat <- fromJSON(rawToChar(res$content))
     if (!is.null(dat$latitude) && !is.null(dat$longitude)) {
-      ret <- list()
       ret$latitude <- dat$latitude
       ret$longitude <- dat$longitude
       ret$place_str <- with(dat, paste(city, region_name, country_name,
