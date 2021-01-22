@@ -764,7 +764,9 @@ server <- function(input, output, session) {
   loc_info <- reactive({
     ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
     ret <- NULL
-    if (is.null(input$store$loc_info)) {
+    if (is.null(input$store$loc_info) ||
+        is.null(input$store$loc_info$ipaddr) ||
+        input$store$loc_info$ipaddr != ipaddr) {
       ipinfo <- query_ip(ipaddr)
       ret <- ipinfo
       updateStore(session, "loc_info", ipinfo)
@@ -783,10 +785,8 @@ server <- function(input, output, session) {
   ## 1st tab: Big Rt Map
   ########################################################################
 
-
   # set resolution of map based on location
   observe({
-    # TODO: Replace these hard-coded values
     loc_info_cur <- loc_info()
     lat <- loc_info_cur$latitude
     long <- loc_info_cur$longitude
