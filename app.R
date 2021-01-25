@@ -750,10 +750,10 @@ ui <- function(req) {
             column(4, plotOutput("map_click_plot", height = "600px"))
           ), # end of fluidRow 2
           fluidRow(
-            uiOutput("heatmap_ui")
+            hidden(uiOutput("heatmap_ui"))
           ),
           fluidRow(
-            uiOutput("forestplot_ui")
+            hidden(uiOutput("forestplot_ui"))
           ),
           fluidRow(
             actionButton("toggle_more", label = "Show More"),
@@ -771,7 +771,8 @@ ui <- function(req) {
               p("Some areas may not appear in the plot for all time points because of insufficient data."),
               p("Occasionally, locations may have negative values for new cases because of reporting issues."),
               # break up the selection by state, county, and country
-              # source for remove button: https://gist.github.com/pvictor/ee154cc600e82f3ed2ce0a333bc7d015
+              # source for remove button:
+              # https://gist.github.com/pvictor/ee154cc600e82f3ed2ce0a333bc7d015
               selectizeInput("compare_sel_states", label = "States/Provinces",
                             choices = place_choices$us_state,
                             multiple = TRUE,
@@ -867,14 +868,16 @@ server <- function(input, output, session) {
   ########################################################################
   cat("The remote IP is", isolate(input$remote_addr), "\n")
 
-  loc_info <- reactive({
+  loc_info <- reactiveValues(value = NULL)
+  restored <- reactiveValues(value = FALSE)
+
+  observe({
     ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
-    ret <- NULL
     if (is.null(input$store$loc_info) ||
         is.null(input$store$loc_info$ipaddr) ||
         input$store$loc_info$ipaddr != ipaddr) {
       ipinfo <- query_ip(ipaddr)
-      ret <- ipinfo
+      loc_info$value <- ipinfo
       updateStore(session, "loc_info", ipinfo)
     } else {
       message("Read value from storage")
@@ -882,9 +885,8 @@ server <- function(input, output, session) {
       while (is.null(input$store$loc_info)) {
         Sys.sleep(0.1)
       }
-      ret <- input$store$loc_info
+      loc_info$value <- input$store$loc_info
     }
-    ret
   })
 
   ########################################################################
@@ -893,7 +895,7 @@ server <- function(input, output, session) {
 
   # set resolution of map based on location
   observe({
-    loc_info_cur <- loc_info()
+    loc_info_cur <- loc_info$value
     lat <- loc_info_cur$latitude
     long <- loc_info_cur$longitude
     latlong_dat <- data.frame(Latitude = lat, Longitude = long)
@@ -927,7 +929,9 @@ server <- function(input, output, session) {
         set_res <- "country"
       }
     }
-    updateSelectInput(session, "select_resolution", selected = set_res)
+    if (!restored$value) {
+      updateSelectInput(session, "select_resolution", selected = set_res)
+    }
   })
 
   # The basic big Rt map
@@ -1013,7 +1017,7 @@ server <- function(input, output, session) {
     #} else if (isTRUE(startsWith(input$select_resolution, "840")) ||
     #           isTRUE(identical(input$select_resolution, "630"))) {
     #  clicked_uid <- as.integer(input$select_resolution)
-    #} 
+    #}
     #if (!is.null(clicked_uid)) {
     #  #session$sendCustomMessage("change_click", clicked_uid)
     #}
@@ -1092,7 +1096,7 @@ server <- function(input, output, session) {
   #}, cacheKeyExpr = { input$map_main_shape_click$id })
 
   output$ip_addr <- renderText({
-    with(loc_info(),
+    with(loc_info$value,
          sprintf("Your location was automatically detected as: %s", place_str))
   })
 
@@ -1262,6 +1266,49 @@ server <- function(input, output, session) {
     munge_for_dt(ret_df)
   }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
 
+
+  ########################################################################
+  ## Housekeeping stuff
+  ########################################################################
+
+
+  # trigger bookmarking in URL every time an input changes
+  # source: https://shiny.rstudio.com/articles/bookmarking-state.html
+  observe({
+    # Trigger this observer every time an input changes
+    reactiveValuesToList(input)
+    session$doBookmark()
+  })
+  onBookmarked(function(url) {
+    updateQueryString(url)
+  })
+
+  # Save extra values in state$values when we bookmark
+  #onBookmark(function(state) {
+  #  state$values$loc_info <- loc_info$value
+  #})
+
+  # Read values from state$values when we restore
+  onRestore(function(state) {
+    #loc_info$value <- state$values$loc_info
+    restored$value <- TRUE
+  })
+
+  # don't remember the following parameters
+  setBookmarkExclude(c("store", "map_main_center", "map_main_groups",
+                       "Rt_table_state", "sidebarItemExpanded",
+                       "sidebarCollapsed",
+                       "Rt_table_rows_selected", "Rt_table_columns_selected",
+                       "map_main_zoom", "remote_addr",
+                       "Rt_table_cell_clicked", "map_main_bounds",
+                       "toggle_more",
+                       "Rt_table_rows_current",
+                       "Rt_table_row_last_clicked",
+                       "Rt_table_cells_selected",
+                       "Rt_table_rows_all",
+                       "map_main_shape_mouseover",
+                       "map_main_shape_mouseout"))
+
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
   # this to allow the user to be automatically connected
   session$allowReconnect("force")
@@ -1269,4 +1316,4 @@ server <- function(input, output, session) {
 }
 
 # Run the application
-shinyApp(ui = ui, server = server)
+shinyApp(ui = ui, server = server, enableBookmarking = "url")
