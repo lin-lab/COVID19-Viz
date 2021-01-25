@@ -771,15 +771,25 @@ ui <- function(req) {
               p("Some areas may not appear in the plot for all time points because of insufficient data."),
               p("Occasionally, locations may have negative values for new cases because of reporting issues."),
               # break up the selection by state, county, and country
+              # source for remove button: https://gist.github.com/pvictor/ee154cc600e82f3ed2ce0a333bc7d015
               selectizeInput("compare_sel_states", label = "States/Provinces",
                             choices = place_choices$us_state,
-                            multiple = TRUE),
+                            multiple = TRUE,
+                            options = list('plugins' = list('remove_button'),
+                                           'create' = TRUE,
+                                           'persist' = FALSE)),
               selectizeInput("compare_sel_counties", label = "Counties (US)",
                             choices = place_choices$county,
-                            multiple = TRUE),
+                            multiple = TRUE,
+                            options = list('plugins' = list('remove_button'),
+                                           'create' = TRUE,
+                                           'persist' = FALSE)),
               selectizeInput("compare_sel_countries", label = "Countries",
                             choices = place_choices$country,
-                            multiple = TRUE),
+                            multiple = TRUE,
+                            options = list('plugins' = list('remove_button'),
+                                           'create' = TRUE,
+                                           'persist' = FALSE)),
               checkboxGroupInput("compare_metric",
                                 label = "Select metrics to compare",
                                 choices = list("Rt" = "rt",
@@ -1074,7 +1084,6 @@ server <- function(input, output, session) {
     shiny::validate(need(input$map_main_shape_click,
                          message = "Click on a location to show Rt and new cases over time."))
     click <- input$map_main_shape_click
-    print(click)
     plt_dat <- rt_long_all[UID == click$id, ]
     if (nrow(plt_dat) > 0) {
       suppressWarnings(click_plot(plt_dat))
