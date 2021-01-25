@@ -1,3 +1,3 @@
-Shiny.addCustomMessageHandler("defaultResolution", function(res) {
-  Shiny.setInputValue("select_resolution", res);
+Shiny.addCustomMessageHandler("change_click", function(uid) {
+  Shiny.setInputValue("map_main_shape_click_manual", {id: uid});
 })
