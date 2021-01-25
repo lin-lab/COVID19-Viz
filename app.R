@@ -772,7 +772,7 @@ ui <- function(req) {
               p("Occasionally, locations may have negative values for new cases because of reporting issues."),
               # break up the selection by state, county, and country
               selectizeInput("compare_sel_states", label = "States/Provinces",
-                            choices = place_choices$state,
+                            choices = place_choices$us_state,
                             multiple = TRUE),
               selectizeInput("compare_sel_counties", label = "Counties (US)",
                             choices = place_choices$county,
