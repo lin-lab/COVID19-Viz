@@ -122,6 +122,10 @@ addCircles_default <-
 date_real_range <- range(rt_long_all$date)
 date_lag_range <- range(rt_long_all$date_lag)
 
+country_uids <- sf_all %>%
+  filter(resolution == "country") %>%
+  pull(UID)
+
 resolution_uniq <- unique(rt_long_all$resolution)
 resolution_names <- data.table(orig = resolution_uniq)
 resolution_names[, c("resolution", "country") := tstrsplit(orig, "_", fixed = TRUE)]
@@ -743,7 +747,8 @@ ui <- function(req) {
             column(width = 4,
               selectInput("select_resolution", "Resolution:",
                           choices = resolution_choices,
-                          selected = "subnat_USA")
+                          selected = "subnat_USA"),
+              actionButton("reset_plot", label = "Reset Plot")
             ) # end of column 3
           ), # end of fluidRow 1
           fluidRow(
@@ -1003,29 +1008,6 @@ server <- function(input, output, session) {
   })
 
   # change the default clicked object when resolution changes
-  # TODO: get this to work
-  #observe({
-    #clicked_uid <- NULL
-    #if (isTRUE(startsWith(input$select_resolution, "subnat_"))) {
-    #  if (isTRUE(identical(input$select_resolution, "subnat_USA"))) {
-    #    clicked_uid <- 840
-    #  } else {
-    #    country_name <- substring(input$select_resolution, first = 8)
-    #    country_uid <- rt_long_all[dispID == country_name, UID]
-    #    if (isTRUE(uniqueN(country_uid) == 1)) {
-    #      clicked_uid <- unique(country_uid)
-    #    }
-    #  }
-    #} else if (isTRUE(startsWith(input$select_resolution, "840")) ||
-    #           isTRUE(identical(input$select_resolution, "630"))) {
-    #  clicked_uid <- as.integer(input$select_resolution)
-    #}
-    #if (!is.null(clicked_uid)) {
-    #  #session$sendCustomMessage("change_click", clicked_uid)
-    #}
-
-  #})
-
 
   # keep track of previous group ID so we can clear its shapes
   prev_grpid_all_reactive <- reactiveValues(val = "")
@@ -1086,16 +1068,57 @@ server <- function(input, output, session) {
   })
 
   # Rt over time based on click
-  output$map_click_plot <- renderPlot({
-    shiny::validate(need(input$map_main_shape_click,
-                         message = "Click on a location to show Rt and new cases over time."))
-    click <- input$map_main_shape_click
-    plt_dat <- rt_long_all[UID == click$id, ]
-    if (nrow(plt_dat) > 0) {
-      suppressWarnings(click_plot(plt_dat))
+  click_reactive <- reactiveValues(cur_uid = NULL)
+  observe({
+    req(input$map_main_shape_click)
+    req(input$map_main_shape_click$id)
+    click_reactive$cur_uid <- input$map_main_shape_click$id
+  })
+
+  # set clicked UID to null every time the resolution changes or user hits the
+  # reset_plot button
+  observe({
+    input$select_resolution
+    input$reset_plot
+    # select a random country to plot
+    if (input$select_resolution == "country") {
+      updateActionButton(session, "reset_plot", label = "Random Country")
+      click_reactive$cur_uid <- sample(country_uids, 1)
+    } else {
+      updateActionButton(session, "reset_plot", label = "Reset Plot")
+      click_reactive$cur_uid <- NULL
     }
   })
-  #}, cacheKeyExpr = { input$map_main_shape_click$id })
+
+  render_uid <- reactive({
+    ret <- click_reactive$cur_uid
+    if (is.null(ret)) {
+      if (isTRUE(startsWith(input$select_resolution, "subnat_"))) {
+        if (isTRUE(identical(input$select_resolution, "subnat_USA"))) {
+          ret <- 840
+        } else {
+          country_name <- substring(input$select_resolution, first = 8)
+          country_uid <- rt_long_all[dispID == country_name, UID]
+          if (isTRUE(uniqueN(country_uid) == 1)) {
+            ret <- unique(country_uid)
+          }
+        }
+      } else if (isTRUE(startsWith(input$select_resolution, "840")) ||
+                isTRUE(identical(input$select_resolution, "630"))) {
+        ret <- as.integer(input$select_resolution)
+      }
+    }
+    ret
+  })
+
+  output$map_click_plot <- renderCachedPlot({
+    render_uid_cur <- render_uid()
+    shiny::validate(need(render_uid_cur,
+                         "Please click a location to show the plot"))
+    plt_dat <- rt_long_all[UID == render_uid_cur, ]
+    shiny::validate(need(nrow(plt_dat) > 0, "No data to plot."))
+    suppressWarnings(click_plot(plt_dat))
+  }, cacheKeyExpr = { render_uid() })
 
   output$ip_addr <- renderText({
     with(loc_info$value,
@@ -1137,6 +1160,8 @@ server <- function(input, output, session) {
     }
   }, cacheKeyExpr = { list(input$select_resolution, input$map_metric) })
 
+  # TODO: make subset_rt_long_all handle the stuff about filtering out NAs. That
+  # should make this part less convoluted. Same for forest plot.
   output$heatmap_ui <- renderUI({
     shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
     shiny::validate(need(input$map_metric, "Please select a metric."))
@@ -1310,11 +1335,12 @@ server <- function(input, output, session) {
                        "Rt_table_rows_selected", "Rt_table_columns_selected",
                        "map_main_zoom", "remote_addr",
                        "Rt_table_cell_clicked", "map_main_bounds",
-                       "toggle_more",
+                       "toggle_more", "reset_plot",
                        "Rt_table_rows_current",
                        "Rt_table_row_last_clicked",
                        "Rt_table_cells_selected",
                        "Rt_table_rows_all",
+                       "map_main_shape_click",
                        "map_main_shape_mouseover",
                        "map_main_shape_mouseout"))
 
