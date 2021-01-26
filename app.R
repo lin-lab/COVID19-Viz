@@ -944,7 +944,11 @@ server <- function(input, output, session) {
   # The basic big Rt map
   output$map_main <- renderLeaflet({
     suppressWarnings(
-      leaflet(options = list(worldCopyJump = TRUE)) %>%
+      leaflet(options = leafletOptions(worldCopyJump = TRUE,
+                                       zoomControl = FALSE)) %>%
+        htmlwidgets::onRender("function(el, x) {
+                           L.control.zoom({ position: 'topright' }).addTo(this)
+                           }") %>%
         setView(0, 30, 2) %>%
         setMaxBounds(-180, -90, 180, 90) %>%
         addProviderTiles(providers$Stamen.TonerLite,
