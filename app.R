@@ -732,11 +732,11 @@ ui <- function(req) {
           ),
           fluidRow(
             column(width = 4,
-                   sliderInput("map_date", label = "Date (lagged by 7 days for Rt)",
+                   dateInput("map_date", label = "Date (lagged by 7 days for Rt)",
                                min = date_lag_range[1],
                                max = date_lag_range[2],
                                value = date_lag_range[2],
-                               animate = animationOptions(interval = 1000))
+                               format = "D M d, yyyy")
             ), # end of column 1
             column(width = 4,
               radioButtons("map_metric", "Metric:",
