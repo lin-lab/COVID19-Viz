@@ -424,10 +424,14 @@ subset_rt_long_all <- function(sel_resolution, date_select = NULL) {
 }
 
 #' Draw a blank plot
-blank_plot <- function(title = "Insufficient data") {
-  p <- ggplot() +
-    ggtitle("Insufficient data") +
-    theme_dark() +
+blank_plot <- function(title = "Insufficient data",
+                       theme = c("dark", "light")) {
+  theme <- match.arg(theme)
+  p <- ggplot() + ggtitle(title)
+  if (theme == "dark") {
+    p <- p + theme_dark()
+  }
+  p <- p +
     theme(axis.text.y = element_text(size = 16),
           axis.text.x = element_text(size = 16),
           axis.title = element_text(size = 20),
@@ -720,13 +724,11 @@ ui <- function(req) {
           br(),
           fluidRow(
             includeMarkdown("assets/header.md"),
-            p("Use slider to adjust date. Click on an area to see its Rt over time."),
-            p("Click play button to animate Rt over time."),
-            p("Note the Rt is lagged by 5 days."),
+            p("Use slider to adjust date. Click on an area to see its Rt over time. Click the play button to animate Rt over time."),
           ),
           fluidRow(
             column(width = 4,
-                   sliderInput("map_date", label = "Date",
+                   sliderInput("map_date", label = "Date (lagged by 7 days for Rt)",
                                min = date_lag_range[1],
                                max = date_lag_range[2],
                                value = date_lag_range[2],
