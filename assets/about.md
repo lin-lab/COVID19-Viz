@@ -295,7 +295,7 @@ of Biostatistics](https://www.hsph.harvard.edu/biostatistics/) at the
 
 - Website development: Andy Shi
 
-- Rt Calculation: Sheila Gaynor
+- Rt Calculation: Andy Shi, Sheila Gaynor, Corbin Quick
 
 - Sensitivity Analysis: Xihao Li, Hui Li, Zilin Li, Derek Shyr
 
