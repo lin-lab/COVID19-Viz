@@ -1144,7 +1144,10 @@ server <- function(input, output, session) {
                             "rt" = "rt",
                             "case" = "case_rate",
                             "death" = "death_rate")
-    num_rows <- uniqueN(heatmap_data()[, dispID])
+    num_rows <- uniqueN(heatmap_data()[!is.na(get(column_select)), dispID])
+    if (input$select_resolution == "county") {
+      num_rows <- 0
+    }
     #num_rows <- sum(is.na(heatmap_data()[, ..column_select]))
     plt_height <- sprintf("%dpx", max(20 * num_rows, 300))
     plotOutput("heatmap", height = plt_height)
@@ -1167,6 +1170,7 @@ server <- function(input, output, session) {
     shiny::validate(need(input$map_metric, "Please select a metric."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
     date_select <- format(input$map_date, "%Y-%m-%d")
+
     if (isTRUE(identical(input$select_resolution, "county"))) {
       blank_plot("Forest Plot Not Available for all US Counties")
     } else {
@@ -1186,6 +1190,9 @@ server <- function(input, output, session) {
                             "case" = "case_rate",
                             "death" = "death_rate")
     num_rows <- sum(!is.na(forestPlot_data()[, ..column_select]))
+    if (input$select_resolution == "county") {
+      num_rows <- 0
+    }
     plt_height <- sprintf("%dpx", max(20 * num_rows, 300))
     plotOutput("forestplot", height = plt_height)
   })
