@@ -407,26 +407,6 @@ munge_for_dt <- function(df) {
   return(df_subset)
 }
 
-#' Subset rt_long_all for forest plot and heatmap
-
-subset_rt_long_all <- function(sel_resolution, date_select = NULL) {
-  # if selected resolution starts with 840 is 630 it's a US county
-  if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
-    county_uids <- get_county_uids(sel_resolution)
-    ret <- rt_long_all[resolution == "county" &
-                        ((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
-                          UID %in% county_uids$extra_uids), ]
-  } else {
-    ret <- rt_long_all[resolution == sel_resolution, ]
-  }
-  if (is.null(date_select)) {
-    return(ret)
-  } else {
-    return(ret[date == date_select, ])
-  }
-  ret
-}
-
 #' Draw a blank plot
 blank_plot <- function(title = "Insufficient data",
                        theme = c("dark", "light")) {
@@ -453,34 +433,51 @@ get_plt_params <- function(metric = c("rt", "case", "death")) {
   plt_params <- switch(metric,
     "rt" = list(bins = bins_rt, var = "rt", lwr = "rt_lower", upr = "rt_upper",
                 labels = rt_color_labels, color = colors_rt,
-                title_str = "Rt"),
+                date_var = "date_lag", title_str = "Rt"),
     "case" = list(bins = bins_cases, var = "case_rate", lwr = "case_lower",
                   upr = "case_upper", labels = cases_color_labels,
-                  color = colors_cases,
+                  color = colors_cases, date_var = "date",
                   title_str = "Case Rate per Million"),
     "death" = list(bins = bins_deaths, var = "death_rate", lwr = "death_lower",
                    upr = "death_upper", labels = deaths_color_labels,
-                   color = colors_cases,
+                   color = colors_cases, date_var = "date",
                    title_str = "Death Rate per Million")
   )
   return(plt_params)
 }
 
 #' Set up data frame for forest plot and heat map
-setup_plot_df <- function(df, sel_resolution, metric = c("rt", "case", "death"),
+setup_plot_df <- function(sel_resolution, date_select = NULL,
+                          metric = c("rt", "case", "death"),
                           sorted = c("alphabetical", "metric")) {
+
   metric <- match.arg(metric)
   sorted <- match.arg(sorted)
+
+  # first, subset rt_long_all
+  if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
+    county_uids <- get_county_uids(sel_resolution)
+    dat_subset <- rt_long_all[resolution == "county" &
+                              ((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
+                              UID %in% county_uids$extra_uids), ]
+  } else {
+    dat_subset <- rt_long_all[resolution == sel_resolution, ]
+  }
+  if (!is.null(date_select)) {
+    dat_subset <- dat_subset[date == date_select, ]
+  }
+
   plt_params <- get_plt_params(metric)
-  df$range <- cut(df[[plt_params$var]], breaks = plt_params$bins,
-                  labels = plt_params$labels, include.lowest = TRUE,
-                  right = FALSE)
+  dat_subset$range <- cut(dat_subset[[plt_params$var]],
+                          breaks = plt_params$bins,
+                          labels = plt_params$labels, include.lowest = TRUE,
+                          right = FALSE)
 
   # configure colors for bins
   color_pal <- plt_params$color
-  names(color_pal) <- levels(df$range)
+  names(color_pal) <- levels(dat_subset$range)
 
-  plt_df <- df[!is.na(get(plt_params$var)), ]
+  plt_df <- dat_subset[!is.na(get(plt_params$var)), ]
 
   if (isTRUE(identical(sel_resolution, "county")) ||
       isTRUE(startsWith(sel_resolution, "840")) ||
@@ -490,30 +487,29 @@ setup_plot_df <- function(df, sel_resolution, metric = c("rt", "case", "death"),
     plt_df[, dispID := sub(", [A-Za-z ]+", "", dispID)]
   }
   if (sorted == "metric") {
-    unique_dispIDs <- uniqueN(df$dispID)
-    stopifnot(isTRUE(unique_dispIDs == nrow(df)))
+    unique_dispIDs <- uniqueN(dat_subset$dispID)
+    stopifnot(isTRUE(unique_dispIDs == nrow(dat_subset)))
     setorderv(plt_df, cols = plt_params$var, order = 1, na.last = TRUE)
     plt_df[, dispID_ord := factor(dispID, levels = dispID)]
   } else {
     stopifnot(isTRUE(identical(sorted, "alphabetical")))
     plt_df[, dispID_ord := factor(dispID)]
   }
-  ret <- list(plt_df = plt_df, plt_params = plt_params, color_pal = color_pal)
+  uniqn_dispIDs <- uniqueN(plt_df$dispID)
+  ret <- list(plt_df = plt_df, plt_params = plt_params, color_pal = color_pal,
+              uniqn_dispIDs = uniqn_dispIDs, date_select = date_select)
   return(ret)
 }
 
 #' Draw forest plot of current Rt and confidence interval
-forest_plot <- function(df, sel_resolution, date_selected,
-                        metric = c("rt", "case", "death")) {
-  metric <- match.arg(metric)
-  plt_df_params <- setup_plot_df(df, sel_resolution, metric, sorted = "metric")
+forest_plot <- function(plt_df_params) {
 
   p <- with(plt_df_params, {
     if (nrow(plt_df) == 0) {
       # quit if there's no data
       return(blank_plot())
     }
-    title_str <- sprintf("%s on %s", plt_params$title_str, date_selected)
+    title_str <- sprintf("%s on %s", plt_params$title_str, date_select)
     xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
     p <- ggplot(plt_df,
           aes_string(x = plt_params$var, y = "dispID_ord",
@@ -536,7 +532,7 @@ forest_plot <- function(df, sel_resolution, date_selected,
             panel.grid.minor.x = element_blank(),
             panel.background = element_rect(fill = '#9e9e9e',
                                             colour = '#9e9e9e'))
-    if (metric == "rt") {
+    if (plt_params$var == "rt") {
       p <- p + geom_vline(xintercept = 1, lty = 2, color = "white", lwd = 1.5)
     }
     p
@@ -545,24 +541,16 @@ forest_plot <- function(df, sel_resolution, date_selected,
 }
 
 #' Draw heat map of Rt/case/death rate
-heat_map <- function(df, sel_resolution, metric = c("rt", "case", "death")) {
-  metric <- match.arg(metric)
-
-  plt_df_params <- setup_plot_df(df, sel_resolution, metric)
-
+heat_map <- function(plt_df_params) {
   p <- with(plt_df_params, {
     if (nrow(plt_df) == 0) {
       return(blank_plot())
     }
 
-    date_var = switch(metric,
-                      rt = "date_lag",
-                      "date")
-
     title_str <- sprintf("%s Heatmap", plt_params$title_str)
     xlab_str <- sprintf("%s", plt_params$title_str)
     p <- ggplot(plt_df,
-          aes_string(x = date_var, y = "dispID_ord",
+          aes_string(x = plt_params$date_var, y = "dispID_ord",
                     fill = "range")) +
       geom_tile() +
       scale_fill_manual(drop = FALSE, values = color_pal,
@@ -586,8 +574,6 @@ heat_map <- function(df, sel_resolution, metric = c("rt", "case", "death")) {
   })
   return(p)
 }
-
-
 
 #' Helper for compare_plot
 #'
@@ -664,27 +650,6 @@ compare_plot <- function(dt, metric_lst) {
   return(plt_lst)
 }
 
-#' Update date slider
-date_slider_update <- function(session, id, cur_slider_val, metric = "not rt",
-                               ...) {
-  if (metric == "rt") {
-    min_date <- date_lag_range[1]
-    max_date <- date_lag_range[2]
-  } else {
-    min_date <- date_real_range[1]
-    max_date <- date_real_range[2] - 1
-  }
-  new_slider_val <- cur_slider_val
-  if (is.null(new_slider_val) || is.na(new_slider_val) ||
-      new_slider_val > max_date) {
-    new_slider_val <- max_date
-  } else if (new_slider_val < min_date) {
-    new_slider_val <- min_date
-  }
-  updateSliderInput(session, id, min = min_date, max = max_date,
-                    value = new_slider_val)
-}
-
 ########################################################################
 ## Define UI
 ########################################################################
@@ -747,8 +712,9 @@ ui <- function(req) {
             column(width = 4,
               selectInput("select_resolution", "Resolution:",
                           choices = resolution_choices,
-                          selected = "subnat_USA"),
-              actionButton("reset_plot", label = "Reset Plot")
+                          selected = "country"),
+              actionButton("reset_plot", label = "Reset Plot"),
+              downloadButton("click_plot_dl", "Download Plot")
             ) # end of column 3
           ), # end of fluidRow 1
           fluidRow(
@@ -756,14 +722,27 @@ ui <- function(req) {
             # plot of Rt over time
             column(4, plotOutput("map_click_plot", height = "600px"))
           ), # end of fluidRow 2
+          # hidden heatmap and forestplot
           fluidRow(
-            hidden(uiOutput("heatmap_ui"))
-          ),
+            column(6, shinyjs::hidden(uiOutput("heatmap_ui")), align = "center"),
+            column(6, shinyjs::hidden(uiOutput("forestplot_ui")), align = "center")
+          ), # end of fluidRow 3
+          # download buttons for heatmap and forestplot
           fluidRow(
-            hidden(uiOutput("forestplot_ui"))
-          ),
+            column(6,
+              shinyjs::hidden(
+                downloadButton("heatmap_dl", "Download Heat Map")
+              ),
+              align = "center"),
+            column(6,
+              shinyjs::hidden(
+                downloadButton("forestplot_dl", "Download Forest Plot")
+              ),
+              align = "center")
+          ), # end of fluidRow
           fluidRow(
-            actionButton("toggle_more", label = "Show More"),
+            column(12, actionButton("toggle_more", label = "Show More"),
+                   align = "center")
           ),
           fluidRow(
             textOutput("ip_addr")
@@ -810,8 +789,9 @@ ui <- function(req) {
                                                 "Total cases" = "positive",
                                                 "Total deaths" = "death"),
                                 selected = c("rt", "case_rate", "death_rate")),
-              actionButton("compare_submit", label = "Submit")
+              actionButton("compare_submit", label = "Draw Plot"),
               actionButton("compare_reset", label = "Reset Fields"),
+              downloadButton("compare_dl", label = "Download Plot")
             ), # end of column
             column(width = 8, uiOutput("compare_plt_ui"))
           ) # end of fluidPage
@@ -843,6 +823,7 @@ ui <- function(req) {
         tabItem("about",
           withTags({
             div(class = "aboutpage",
+              # TODO: edit the about page
               includeMarkdown("assets/about.md")
             )
           }) # end of withTags
@@ -1042,14 +1023,9 @@ server <- function(input, output, session) {
     map
   })
 
-  # change the legend and date slider when the map metric changes
+  # change the legend when the map metric changes
   observe({
     shiny::validate(need(input$map_metric, "Please select a metric."))
-
-    # part for changing the date slider
-    date_slider_update(session, "map_date", input$map_date,
-                       metric = input$map_metric)
-
 
     # part for changing the map
     map <- leafletProxy("map_main")
@@ -1070,6 +1046,26 @@ server <- function(input, output, session) {
                   position = "bottomleft", layerId = "legend")
       map
     })
+  })
+
+  # change the date slider / date selector widget
+  observe({
+    if (input$map_metric == "rt") {
+      min_date <- date_lag_range[1]
+      max_date <- date_lag_range[2]
+    } else {
+      min_date <- date_real_range[1]
+      max_date <- date_real_range[2] - 1
+    }
+    new_slider_val <- input$map_date
+    if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
+        isTRUE(new_slider_val > max_date)) {
+      new_slider_val <- max_date
+    } else if (new_slider_val < min_date) {
+      new_slider_val <- min_date
+    }
+    updateDateInput(session, "map_date", value = new_slider_val,
+                    min = min_date, max = max_date)
   })
 
   # Rt over time based on click
@@ -1116,14 +1112,33 @@ server <- function(input, output, session) {
     ret
   })
 
-  output$map_click_plot <- renderCachedPlot({
+  click_plot_cur <- reactive({
     render_uid_cur <- render_uid()
     shiny::validate(need(render_uid_cur,
                          "Please click a location to show the plot"))
     plt_dat <- rt_long_all[UID == render_uid_cur, ]
     shiny::validate(need(nrow(plt_dat) > 0, "No data to plot."))
     suppressWarnings(click_plot(plt_dat))
+  })
+
+  output$map_click_plot <- renderCachedPlot({
+    click_plot_cur()
   }, cacheKeyExpr = { render_uid() })
+
+  output$click_plot_dl <- downloadHandler(
+    filename = function() {
+      cur_uid <- render_uid()
+      dispID_cur <- sf_all %>%
+        filter(UID == cur_uid) %>%
+        pull(dispID)
+      return(sprintf("%s_rt_case_death.png", dispID_cur))
+    },
+    content = function(file) {
+      ggsave(filename = file, plot = click_plot_cur(),
+             height = 8, width = 5)
+
+    }
+  )
 
   output$ip_addr <- renderText({
     with(loc_info$value,
@@ -1139,42 +1154,47 @@ server <- function(input, output, session) {
     if (input$toggle_more %%2 == 1) {
       shinyjs::show("heatmap_ui")
       shinyjs::show("forestplot_ui")
+      shinyjs::show("heatmap_dl")
+      shinyjs::show("forestplot_dl")
       updateActionButton(session, "toggle_more", label = "Show Less")
     } else {
       shinyjs::hide("heatmap_ui")
       shinyjs::hide("forestplot_ui")
+      shinyjs::hide("heatmap_dl")
+      shinyjs::hide("forestplot_dl")
       updateActionButton(session, "toggle_more", label = "Show More")
     }
   })
 
+  # processing data for heatmap
   heatmap_data <- reactive({
     shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
     shiny::validate(need(input$map_metric, "Please select a metric."))
-    subset_rt_long_all(input$select_resolution)
+    setup_plot_df(input$select_resolution, metric = input$map_metric,
+                  sorted = "alphabetical")
   })
 
-  output$heatmap <- renderCachedPlot({
-    shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
-    shiny::validate(need(input$map_metric, "Please select a metric."))
-
+  # heatmap ggplot object
+  heatmap_plot <- reactive({
     if (isTRUE(identical(input$select_resolution, "county"))) {
       blank_plot("Heat Map Not Available for all US Counties")
     } else {
-      heatmap_data() %>%
-        heat_map(input$select_resolution, input$map_metric)
+      heat_map(heatmap_data())
     }
+  })
+
+  # actually rendering the plot
+  output$heatmap <- renderCachedPlot({
+    shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
+    shiny::validate(need(input$map_metric, "Please select a metric."))
+    heatmap_plot()
   }, cacheKeyExpr = { list(input$select_resolution, input$map_metric) })
 
-  # TODO: make subset_rt_long_all handle the stuff about filtering out NAs. That
-  # should make this part less convoluted. Same for forest plot.
+  # UI for heatmap: height depends on number of rows
   output$heatmap_ui <- renderUI({
     shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
     shiny::validate(need(input$map_metric, "Please select a metric."))
-    column_select <- switch(input$map_metric,
-                            "rt" = "rt",
-                            "case" = "case_rate",
-                            "death" = "death_rate")
-    num_rows <- uniqueN(heatmap_data()[!is.na(get(column_select)), dispID])
+    num_rows <- heatmap_data()$uniqn_dispIDs
     if (input$select_resolution == "county") {
       num_rows <- 0
     }
@@ -1183,49 +1203,92 @@ server <- function(input, output, session) {
     plotOutput("heatmap", height = plt_height)
   })
 
+  output$heatmap_dl <- downloadHandler(
+    filename = function() {
+      if (startsWith(input$select_resolution, "840") ||
+          input$select_resolution == "630") {
+        cur_uid <- input$select_resolution
+        dispID_cur <- sf_all %>%
+          filter(UID == cur_uid) %>%
+          pull(dispID) %>%
+          sub(", [A-Za-z ]+", "", .)
+      } else {
+        dispID_cur <- substring(input$select_resolution, first = 8)
+      }
+      fname <- sprintf("%s_%s_heatmap.png", dispID_cur, input$map_metric)
+      return(fname)
+
+    },
+    content = function(file) {
+      ggsave(filename = file, plot = heatmap_plot(),
+             height = max(0.3 * heatmap_data()$uniqn_dispIDs, 6),
+             width = 8, limitsize = FALSE)
+    }
+  )
+
   ########################################################################
   ## 1st tab, part 3: Rt Forest plot
   ########################################################################
 
+  # data for forest plot
   forestPlot_data <- reactive({
     shiny::validate(need(input$map_date, "Please select a date."))
     shiny::validate(need(input$map_metric, "Please select a metric."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
     date_select <- format(input$map_date, "%Y-%m-%d")
-    subset_rt_long_all(input$select_resolution, date_select)
+    setup_plot_df(input$select_resolution, date_select = date_select,
+                  metric = input$map_metric, sorted = "metric")
   })
 
-  output$forestplot <- renderCachedPlot({
-    shiny::validate(need(input$map_date, "Please select a date."))
-    shiny::validate(need(input$map_metric, "Please select a metric."))
-    shiny::validate(need(input$select_resolution, "Please select a resolution."))
-    date_select <- format(input$map_date, "%Y-%m-%d")
-
+  # forestplot ggplot object
+  forestplot_plot <- reactive({
     if (isTRUE(identical(input$select_resolution, "county"))) {
       blank_plot("Forest Plot Not Available for all US Counties")
     } else {
-      forestPlot_data() %>%
-        forest_plot(input$select_resolution, date_select,
-                    metric = input$map_metric)
+      forest_plot(forestPlot_data())
     }
+  })
+
+  # actually rendering the plot
+  output$forestplot <- renderCachedPlot({
+    forestplot_plot()
   }, cacheKeyExpr = { list(input$map_date, input$map_metric,
                            input$select_resolution) })
 
+  # rendering the plot
   output$forestplot_ui <- renderUI({
-    shiny::validate(need(input$map_date, "Please select a date."))
-    shiny::validate(need(input$map_metric, "Please select a metric."))
-    shiny::validate(need(input$select_resolution, "Please select a resolution."))
-    column_select <- switch(input$map_metric,
-                            "rt" = "rt",
-                            "case" = "case_rate",
-                            "death" = "death_rate")
-    num_rows <- sum(!is.na(forestPlot_data()[, ..column_select]))
+    num_rows <- forestPlot_data()$uniqn_dispIDs
     if (input$select_resolution == "county") {
       num_rows <- 0
     }
     plt_height <- sprintf("%dpx", max(20 * num_rows, 300))
     plotOutput("forestplot", height = plt_height)
   })
+
+  output$forestplot_dl <- downloadHandler(
+    filename = function() {
+      if (startsWith(input$select_resolution, "840") ||
+          input$select_resolution == "630") {
+        cur_uid <- input$select_resolution
+        dispID_cur <- sf_all %>%
+          filter(UID == cur_uid) %>%
+          pull(dispID) %>%
+          sub(", [A-Za-z ]+", "", .)
+      } else {
+        dispID_cur <- substring(input$select_resolution, first = 8)
+      }
+      fname <- sprintf("%s_%s_forestPlot_%s.png",
+                       dispID_cur, input$map_metric,
+                       format(input$map_date, "%Y-%m-%d"))
+      return(fname)
+
+    },
+    content = function(file) {
+      ggsave(filename = file, plot = forestplot_plot(),
+             height = max(0.3 * forestPlot_data()$uniqn_dispIDs, 6),
+             width = 8, limitsize = FALSE)
+    }
+  )
 
 
   ########################################################################
@@ -1255,6 +1318,9 @@ server <- function(input, output, session) {
     shinyjs::reset("compare_sel_countries")
     shinyjs::reset("compare_metric")
   })
+
+  # reactive thingy to draw the plot
+  compare_plt_render <- reactive({
     cur_dat <- compare_plt_data()
     shiny::validate(need(nrow(cur_dat) > 0,
                   "Insufficient data for selected locations."))
@@ -1267,17 +1333,38 @@ server <- function(input, output, session) {
     plot_grid(plotlist = plt_lst, ncol = 1, align = "v", axis = "l")
   })
 
-  output$compare_plt_ui <- renderUI({
+  # boilerplate to show the plot
+  output$compare_plt_out <- renderPlot({
+    compare_plt_render()
+  })
+
+  # reactive thing for plot height, used for renderUI and downloadHandler
+  compare_plt_height <- reactive({
     # need to take a dependency on compare_plt_data to trigger UI re-draw on
     # submit
     cur_dat <- compare_plt_data()
     metric_lst <- isolate(input$compare_metric)
     n_metrics <- length(metric_lst)
-    plt_height <- 300 * max(1, n_metrics)
-
-    plotOutput("compare_plt_out", height = plt_height)
+    plt_height <- max(1, n_metrics)
+    plt_height
   })
 
+  # UI for plot
+  output$compare_plt_ui <- renderUI({
+    height_touse <- sprintf("%dpx", 300 * compare_plt_height())
+    plotOutput("compare_plt_out", height = height_touse)
+  })
+
+  # download handler for plot
+  output$compare_dl <- downloadHandler(
+    filename = function() {
+      return("compare_plt.png")
+    },
+    content = function(file) {
+      ggsave(filename = file, plot = compare_plt_render(),
+             height = 3 * compare_plt_height(), width = 8)
+    }
+  )
 
   ########################################################################
   ## 3rd tab: Table of Rts and other metrics
