@@ -701,7 +701,7 @@ ui <- function(req) {
                                min = date_lag_range[1],
                                max = date_lag_range[2],
                                value = date_lag_range[2],
-                               format = "D M d, yyyy")
+                               format = "D MM d, yyyy")
             ), # end of column 1
             column(width = 4,
               radioButtons("map_metric", "Metric:",
@@ -802,18 +802,20 @@ ui <- function(req) {
           # to see.
           fluidRow(
             box(width = 6,
-              sliderInput("table_date", label = "Date",
-                          min = date_real_range[1], max = date_real_range[2] - 1,
-                          value = date_real_range[2] - 1)
+              dateInput("table_date", label = "Date",
+                        min = date_real_range[1], max = date_real_range[2] - 1,
+                        value = date_real_range[2] - 1,
+                        format = "D MM d, yyyy")
             ), # end of box 1
             box(width = 6,
               selectInput("table_select_resolution", "Resolution:",
                           choices = resolution_choices,
-                          selected = "subnat_USA")
+                          selected = "country")
             ) # end of box 2
           ), # end of fluidRow 1
           fluidRow(
               h2(textOutput("Rt_table_title")),
+              p("Click a column to sort by that metric"),
               DT::DTOutput("Rt_table"),
               br(),
               includeMarkdown("assets/Rt_table_footer.md")
@@ -920,6 +922,7 @@ server <- function(input, output, session) {
     }
     if (!restored$value) {
       updateSelectInput(session, "select_resolution", selected = set_res)
+      updateSelectInput(session, "table_select_resolution", selected = set_res)
     }
   })
 
@@ -1323,7 +1326,7 @@ server <- function(input, output, session) {
   compare_plt_render <- reactive({
     cur_dat <- compare_plt_data()
     shiny::validate(need(nrow(cur_dat) > 0,
-                  "Insufficient data for selected locations."))
+                         "Insufficient data for selected locations."))
 
     # use isolate() to avoid dependency on input$compare_metric; dependency is
     # handled by compare_plt_data() when user hits submit.
