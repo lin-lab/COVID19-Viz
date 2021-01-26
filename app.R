@@ -811,6 +811,7 @@ ui <- function(req) {
                                                 "Total deaths" = "death"),
                                 selected = c("rt", "case_rate", "death_rate")),
               actionButton("compare_submit", label = "Submit")
+              actionButton("compare_reset", label = "Reset Fields"),
             ), # end of column
             column(width = 8, uiOutput("compare_plt_ui"))
           ) # end of fluidPage
@@ -1247,8 +1248,13 @@ server <- function(input, output, session) {
     rt_long_all[selected_uids, on = "UID", nomatch = NULL]
   })
 
-  # generate the plot of Rt comparisons after user hits submit
-  output$compare_plt_out <- renderPlot({
+  # observe to see if we should reset
+  observeEvent(input$compare_reset, {
+    shinyjs::reset("compare_sel_states")
+    shinyjs::reset("compare_sel_counties")
+    shinyjs::reset("compare_sel_countries")
+    shinyjs::reset("compare_metric")
+  })
     cur_dat <- compare_plt_data()
     shiny::validate(need(nrow(cur_dat) > 0,
                   "Insufficient data for selected locations."))
