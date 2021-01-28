@@ -62,6 +62,19 @@ setkey(rt_long_all, UID)
 # make sure we picked up the right one
 stopifnot("case_rate" %in% colnames(rt_long_all))
 
+# get range of possible dates
+date_real_range <- range(rt_long_all$date)
+date_lag_range <- range(rt_long_all$date_lag)
+lag_rt <- as.integer(difftime(date_real_range[2], date_lag_range[2]),
+                     units = "days")
+# create rt lag
+setorderv(rt_long_all, cols = c("UID", "date"))
+rt_long_all[, `:=` (rt_lag = shift(rt, n = lag_rt, fill = NA, type = "lead"),
+                    rt_lower_lag = shift(rt_lower, n = lag_rt, fill = NA,
+                                         type = "lead"),
+                    rt_upper_lag = shift(rt_upper, n = lag_rt, fill = NA,
+                                         type = "lead")), by = UID]
+
 # choices for each place
 place_choices <- read_aws_or_local("names_list.rds")
 
@@ -118,13 +131,31 @@ addCircles_default <-
                   weight = 5, color = "#666", dashArray = "",
                   fillOpacity = 0.7, bringToFront = TRUE))
 
-# get range of possible dates
-date_real_range <- range(rt_long_all$date)
-date_lag_range <- range(rt_long_all$date_lag)
 
 country_uids <- sf_all %>%
   filter(resolution == "country") %>%
   pull(UID)
+
+table_col_choices <-
+  list("Rt" = "rt_lag",
+       "Rt (lwr)" = "rt_lower_lag",
+       "Rt (upr)" =  "rt_upper_lag",
+       "Case rate" = "case_rate",
+       "Case rate (lwr)" = "case_lower",
+       "Case rate (upr)" = "case_upper",
+       "Death rate" = "death_rate",
+       "Death rate (lwr)" = "death_lower",
+       "Death rate (upr)" = "death_upper",
+       "Cum. cases" = "positive",
+       "Daily new cases" = "positiveIncrease",
+       "Cum. cases per million" = "positive_percapita",
+       "Daily new cases per million" = "positiveIncrease_percapita",
+       "Cum. deaths" = "death",
+       "Daily new deaths" = "deathIncrease",
+       "Cum. deaths per million" = "death_percapita",
+       "Daily new deaths per million" = "deathIncrease_percapita",
+       "Population" = "population")
+
 
 resolution_uniq <- unique(rt_long_all$resolution)
 resolution_names <- data.table(orig = resolution_uniq)
@@ -446,15 +477,7 @@ get_plt_params <- function(metric = c("rt", "case", "death")) {
   return(plt_params)
 }
 
-#' Set up data frame for forest plot and heat map
-setup_plot_df <- function(sel_resolution, date_select = NULL,
-                          metric = c("rt", "case", "death"),
-                          sorted = c("alphabetical", "metric")) {
-
-  metric <- match.arg(metric)
-  sorted <- match.arg(sorted)
-
-  # first, subset rt_long_all
+subset_rt_by_res_date <- function(sel_resolution, date_select = NULL) {
   if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
     county_uids <- get_county_uids(sel_resolution)
     dat_subset <- rt_long_all[resolution == "county" &
@@ -466,6 +489,19 @@ setup_plot_df <- function(sel_resolution, date_select = NULL,
   if (!is.null(date_select)) {
     dat_subset <- dat_subset[date == date_select, ]
   }
+  return(dat_subset)
+}
+
+#' Set up data frame for forest plot and heat map
+setup_plot_df <- function(sel_resolution, date_select = NULL,
+                          metric = c("rt", "case", "death"),
+                          sorted = c("alphabetical", "metric")) {
+
+  metric <- match.arg(metric)
+  sorted <- match.arg(sorted)
+
+  # first, subset rt_long_all
+  dat_subset <- subset_rt_by_res_date(sel_resolution, date_select)
 
   plt_params <- get_plt_params(metric)
   dat_subset$range <- cut(dat_subset[[plt_params$var]],
@@ -699,8 +735,8 @@ ui <- function(req) {
             column(width = 4,
                    dateInput("map_date", label = "Date (lagged by 7 days for Rt)",
                                min = date_lag_range[1],
-                               max = date_lag_range[2],
-                               value = date_lag_range[2],
+                               max = date_lag_range[2] - 1,
+                               value = date_lag_range[2] - 1,
                                format = "D MM d, yyyy")
             ), # end of column 1
             column(width = 4,
@@ -760,26 +796,26 @@ ui <- function(req) {
               # source for remove button:
               # https://gist.github.com/pvictor/ee154cc600e82f3ed2ce0a333bc7d015
               selectizeInput("compare_sel_states", label = "States/Provinces",
-                            choices = place_choices$us_state,
-                            multiple = TRUE,
-                            options = list('plugins' = list('remove_button'),
-                                           'create' = TRUE,
-                                           'persist' = FALSE)),
+                             choices = place_choices$us_state,
+                             multiple = TRUE,
+                             options = list('plugins' = list('remove_button'),
+                                            'create' = TRUE,
+                                            'persist' = FALSE)),
               selectizeInput("compare_sel_counties", label = "Counties (US)",
-                            choices = place_choices$county,
-                            multiple = TRUE,
-                            options = list('plugins' = list('remove_button'),
-                                           'create' = TRUE,
-                                           'persist' = FALSE)),
+                             choices = place_choices$county,
+                             multiple = TRUE,
+                             options = list('plugins' = list('remove_button'),
+                                            'create' = TRUE,
+                                            'persist' = FALSE)),
               selectizeInput("compare_sel_countries", label = "Countries",
-                            choices = place_choices$country,
-                            multiple = TRUE,
-                            options = list('plugins' = list('remove_button'),
-                                           'create' = TRUE,
-                                           'persist' = FALSE)),
+                             choices = place_choices$country,
+                             multiple = TRUE,
+                             options = list('plugins' = list('remove_button'),
+                                            'create' = TRUE,
+                                            'persist' = FALSE)),
               checkboxGroupInput("compare_metric",
-                                label = "Select metrics to compare",
-                                choices = list("Rt" = "rt",
+                                 label = "Select metrics to compare",
+                                 choices = list("Rt" = "rt",
                                                 "Daily new cases per million" = "case_rate",
                                                 "Daily new deaths per million" = "death_rate",
                                                 "Daily new cases" = "positiveIncrease",
@@ -788,7 +824,7 @@ ui <- function(req) {
                                                 "Total deaths per million" = "death_percapita",
                                                 "Total cases" = "positive",
                                                 "Total deaths" = "death"),
-                                selected = c("rt", "case_rate", "death_rate")),
+                                 selected = c("rt", "case_rate", "death_rate")),
               actionButton("compare_submit", label = "Draw Plot"),
               actionButton("compare_reset", label = "Reset Fields"),
               downloadButton("compare_dl", label = "Download Plot")
@@ -813,13 +849,36 @@ ui <- function(req) {
                           selected = "country")
             ) # end of box 2
           ), # end of fluidRow 1
+          # fluidRow 2: selecting columns
           fluidRow(
-              h2(textOutput("Rt_table_title")),
-              p("Click a column to sort by that metric"),
-              DT::DTOutput("Rt_table"),
-              br(),
-              includeMarkdown("assets/Rt_table_footer.md")
-          ) # end of fluidRow 2
+            column(width = 8,
+              selectizeInput("table_cols",
+                             label = "Select columns for table",
+                             choices = table_col_choices,
+                             selected = c("rt_lag", "rt_lower_lag", "rt_upper_lag", "case_rate", "case_lower", "case_upper", "death_rate", "death_lower", "death_upper"),
+                             multiple = TRUE,
+                             options = list('plugins' = list('remove_button'),
+                                            'create' = TRUE,
+                                            'persist' = FALSE),
+                             width = "80%")
+            ),
+            column(width = 4,
+              actionButton("table_reset", "Reset"),
+              downloadButton("table_download", "Download Table"),
+              align = "center"
+            )
+          ), # end of fluidRow 2
+          # fluidRow 3: reset & download buttons
+          # fluidRow 4: actual table output
+          fluidRow(
+            h2(textOutput("Rt_table_title")),
+            p("Click a column to sort by that metric."),
+          ),
+          fluidRow(DT::DTOutput("Rt_table")),
+          fluidRow(
+            br(),
+            includeMarkdown("assets/Rt_table_footer.md")
+          ) # end of fluidRow 4
         ), # end of tabItem for table
         # last tab: About page
         tabItem("about",
@@ -946,6 +1005,7 @@ server <- function(input, output, session) {
   })
 
   # update the data based on values
+  # TODO: Fix this
   sf_dat_update <- reactive({
     shiny::validate(need(input$map_date, "Please select a date."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
@@ -959,7 +1019,12 @@ server <- function(input, output, session) {
       resolution <- input$select_resolution
       state_uid <- NULL
     }
-    sf_by_date_res(input$map_date, metric = input$map_metric,
+    if (input$map_metric == "rt") {
+      date_touse <- input$map_date + as.difftime(lag_rt, units = "days")
+    } else {
+      date_touse <- input$map_date
+    }
+    sf_by_date_res(date_touse, metric = input$map_metric,
                    sel_resolution = resolution, state_uid = state_uid)
   })
 
@@ -1052,6 +1117,7 @@ server <- function(input, output, session) {
   })
 
   # change the date slider / date selector widget
+  # TODO: Fix this
   observe({
     if (input$map_metric == "rt") {
       min_date <- date_lag_range[1]
@@ -1378,26 +1444,49 @@ server <- function(input, output, session) {
     sprintf("Table of metrics for %s.", date_actual)
   })
 
-  # Table of current Rts at current resolution
-  output$Rt_table <- DT::renderDT({
-    date_select <- format(input$table_date, "%Y-%m-%d")
+  rt_table_render <- reactive({
     sel_resolution <- input$table_select_resolution
+    date_select <- format(input$table_date, "%Y-%m-%d")
+    sel_cols <- input$table_cols
     shiny::validate(need(date_select, "Please select a date."))
     shiny::validate(need(sel_resolution, "Please select a resolution."))
+    shiny::validate(need(sel_cols, "Please select some columns."))
+    sel_cols_touse <- c("dispID", sel_cols)
 
-    # if selected resolution starts with 840 is 630 it's a US county
-    if (startsWith(input$table_select_resolution, "840") || input$table_select_resolution == "630") {
-      county_uids <- get_county_uids(input$table_select_resolution)
-      ret_df <- rt_long_all[resolution == "county" & date == date_select &
-                           ((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
-                             UID %in% county_uids$extra_uids), ]
-    } else {
-      ret_df <- rt_long_all[resolution == input$table_select_resolution &
-                            date == date_select, ]
+    dat_subset <- subset_rt_by_res_date(sel_resolution,
+                                        date_select)[, .SD, .SDcols = sel_cols_touse]
+
+    shiny::validate(need(nrow(dat_subset) > 0, "This data has no rows."))
+
+    numeric_cols <- c("rt_lag", "rt_lower_lag", "rt_upper_lag", "case_rate",
+                      "case_lower", "case_upper", "death_rate", "death_lower",
+                      "death_upper")
+    numeric_cols_in_tab <- intersect(numeric_cols, sel_cols)
+    dat_subset[, (numeric_cols_in_tab) := lapply(.SD, round, digits = 2),
+               .SDcols = numeric_cols_in_tab]
+
+    table_col_choices_vec <- unlist(table_col_choices, use.names = TRUE)
+    idx <- table_col_choices_vec %in% sel_cols
+    oldnames <- c("dispID", table_col_choices_vec[idx])
+    newnames <- c("Location", names(table_col_choices)[idx])
+    setnames(dat_subset, old = oldnames, new = newnames)
+    order_col <- "Location"
+    order_num <- 1
+    try_order_cols <- c("Case rate", "Rt", "Daily new cases",
+                        "Daily new cases per million")
+    for (try_col in try_order_cols) {
+      if (try_col %in% newnames) {
+        order_col <- try_col
+        order_num <- -1
+        break
+      }
     }
+    setorderv(dat_subset, cols = order_col, order = order_num, na.last = TRUE)
+  })
 
-    shiny::validate(need(nrow(ret_df) > 0, "This data has no rows."))
-    munge_for_dt(ret_df)
+  # Table of current Rts at current resolution
+  output$Rt_table <- DT::renderDT({
+    rt_table_render()
   }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
 
 
