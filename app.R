@@ -1078,9 +1078,8 @@ server <- function(input, output, session) {
                    sel_resolution = resolution, state_uid = state_uid)
   })
 
-  # change the zoom level only when the resolution changes.
-  observeEvent(input$select_resolution, {
-    # set a reactive dependency on select_resolution, but not on sf_dat_update
+  # change the zoom level when the resolution changes.
+  observe({
     res <- input$select_resolution
     sf_dat_cur <- sf_dat_update()
 
@@ -1564,8 +1563,10 @@ server <- function(input, output, session) {
                        "Rt_table_row_last_clicked",
                        "Rt_table_cells_selected",
                        "Rt_table_rows_all",
+                       "table_reset", "table_cols",
                        "map_latest", "map_2week",
                        "map_1month", "map_2month",
+                       "map_main_center", "map_main_zoom", "map_main_bounds",
                        "map_main_shape_click",
                        "map_main_shape_mouseover",
                        "map_main_shape_mouseout"))
