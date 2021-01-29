@@ -18,6 +18,7 @@ library(DT)
 library(digest)
 library(ggplot2)
 library(cowplot)
+library(viridis)
 library(htmltools)
 library(purrr)
 library(dplyr)
@@ -94,7 +95,9 @@ bins_rt <- c(0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
 bins_cases <- c(0, 50, 100, 250, 500, 750, 1000, Inf)
 bins_deaths <- c(0, 1, 2, 5, 10, 25, 50, Inf)
 colors_rt <- rev(brewer.pal(7, "RdYlBu"))
-colors_cases <- brewer.pal(7, "YlOrRd")
+colors_rt <- viridis(7, option = "plasma")
+#colors_cases <- brewer.pal(7, "YlOrRd")
+colors_cases <- viridis(7, option = "plasma")
 
 cases_color_labels <- c("0 - 50", "50 - 100", "100 - 250", "250 - 500",
                         "500 - 750", "750 - 1000", "1000+")
@@ -539,18 +542,14 @@ forest_plot <- function(plt_df_params) {
                          name = plt_params$title_str) +
       xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
-      theme_dark() +
       #coord_cartesian(xlim = c(0, 5)) +
+      theme_dark() +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
             axis.title = element_text(size = 20),
             legend.title = element_text(size = 18),
             legend.text = element_text(size = 16),
-            plot.title = element_text(size = 24),
-            panel.grid.major.x = element_blank(),
-            panel.grid.minor.x = element_blank(),
-            panel.background = element_rect(fill = '#9e9e9e',
-                                            colour = '#9e9e9e'))
+            plot.title = element_text(size = 24))
     if (plt_params$var == "rt") {
       p <- p + geom_vline(xintercept = 1, lty = 2, color = "white", lwd = 1.5)
     }
@@ -577,8 +576,8 @@ heat_map <- function(plt_df_params) {
       xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
       scale_y_discrete(limits = rev(levels(plt_df$dispID_ord))) +
-      theme_dark() +
       #coord_cartesian(xlim = c(0, 5)) +
+      scale_x_continuous(expand = c(0, 0)) +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
             axis.title = element_text(size = 20),
@@ -586,9 +585,7 @@ heat_map <- function(plt_df_params) {
             legend.text = element_text(size = 16),
             plot.title = element_text(size = 24),
             panel.grid.major.x = element_blank(),
-            panel.grid.minor.x = element_blank(),
-            panel.background = element_rect(fill = '#9e9e9e',
-                                            colour = '#9e9e9e'))
+            panel.grid.minor.x = element_blank())
       p
   })
   return(p)
@@ -607,7 +604,6 @@ compare_plt_helper <- function(dt, x, y, metric_str, ci_lwr = NULL,
     scale_fill_discrete(name = "Location") +
     coord_cartesian(ylim = c(0, NA)) +
     ggtitle(title_str) + ylab("") +
-    theme_cowplot() +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15))
 
