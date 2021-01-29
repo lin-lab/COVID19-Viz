@@ -947,10 +947,10 @@ server <- function(input, output, session) {
   ########################################################################
 
   # set resolution of map based on location
+  do_restore <- reactiveValues(val = FALSE)
   observe({
     # only set the location from IP address if it's not specified in the URL
-    query <- parseQueryString(session$clientData$url_search)
-    if (is.null(query$select_resolution)) {
+    if (!do_restore$val) {
 
       loc_info_cur <- loc_info$value
       lat <- loc_info_cur$latitude
@@ -1011,8 +1011,6 @@ server <- function(input, output, session) {
   })
 
   # change the date selector widget / send the new date to sf_dat_update
-  # reactive value to store the old metric
-  old_metric <- reactiveValues(val = "rt")
   observeEvent(input$map_metric, {
     if (input$map_metric == "rt") {
       min_date <- date_lag_range[1]
@@ -1074,6 +1072,7 @@ server <- function(input, output, session) {
   observe({
     res <- input$select_resolution
     sf_dat_cur <- sf_dat_update()
+    do_restore$val
 
     # by default, use bounding box, but these are exceptions where the bounding
     # box doesn't work
@@ -1543,6 +1542,15 @@ server <- function(input, output, session) {
     reactiveValuesToList(input)
     session$doBookmark()
   })
+
+  onBookmark(function(state) {
+    #state$values$do_restore <- TRUE
+  })
+
+  onRestore(function(state) {
+    do_restore$val <- TRUE
+  })
+
   onBookmarked(function(url) {
     updateQueryString(url)
   })
@@ -1554,7 +1562,7 @@ server <- function(input, output, session) {
                        "Rt_table_rows_selected", "Rt_table_columns_selected",
                        "remote_addr",
                        "Rt_table_cell_clicked",
-                       "toggle_more", "reset_plot",
+                       "toggle_more", "reset_plot", "compare_reset",
                        "Rt_table_rows_current",
                        "Rt_table_row_last_clicked",
                        "Rt_table_cells_selected",
@@ -1563,6 +1571,7 @@ server <- function(input, output, session) {
                        "map_latest", "map_2week",
                        "map_1month", "map_2month",
                        "map_main_center", "map_main_zoom", "map_main_bounds",
+                       "map_main_click",
                        "map_main_shape_click",
                        "map_main_shape_mouseover",
                        "map_main_shape_mouseout"))
