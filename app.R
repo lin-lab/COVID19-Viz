@@ -421,23 +421,6 @@ click_plot <- function(plt_dat) {
   return(final_plt)
 }
 
-#' Preprocess data frame to be displayed by DT.
-# TODO: Handle Rt / date lag situation
-munge_for_dt <- function(df) {
-  df_subset <- df[, .(dispID, positive, death, rt, rt_lower, rt_upper,
-                      case_rate, case_lower, case_upper, death_rate,
-                      death_lower, death_upper)]
-  numeric_cols <- c("rt", "rt_lower", "rt_upper", "case_rate", "case_lower",
-                    "case_upper", "death_rate", "death_lower", "death_upper")
-  df_subset[, (numeric_cols) := lapply(.SD, round, digits = 2),
-            .SDcols = numeric_cols]
-  colnames(df_subset) <- c("Location", "Total Cases", "Total Deaths", "Rt", "Rt
-                           CI Lwr", "Rt CI Upr", "Case Rate", "Case Lwr",
-                           "Case Upr", "Death Rate", "Death Lwr", "Death Upr")
-  setorderv(df_subset, cols = "Case Rate", order = -1, na.last = TRUE)
-  return(df_subset)
-}
-
 #' Draw a blank plot
 blank_plot <- function(title = "Insufficient data",
                        theme = c("dark", "light")) {
@@ -686,6 +669,23 @@ compare_plot <- function(dt, metric_lst) {
   return(plt_lst)
 }
 
+#' Get display ID from resolution
+
+dispID_from_res <- function(sel_resolution) {
+  if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
+    cur_uid <- sel_resolution
+    dispID_cur <- sf_all %>%
+      filter(UID == cur_uid) %>%
+      pull(dispID) %>%
+      sub(", [A-Za-z ]+", "", .)
+  } else if (isTRUE(startsWith(sel_resolution, "subnat_"))) {
+    dispID_cur <- substring(sel_resolution, first = 8)
+  } else {
+    dispID_cur <- sel_resolution
+  }
+  return(dispID_cur)
+}
+
 ########################################################################
 ## Define UI
 ########################################################################
@@ -706,7 +706,7 @@ ui <- function(req) {
   ),
   dashboardBody(
     tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
-    tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 18px}")),
+    tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 16px}")),
     #tags$head(tags$script(src = "shinyjs_funs.js")),
     tags$head(includeHTML("assets/google-analytics.html")),
     tags$head(tags$style(
@@ -834,13 +834,11 @@ ui <- function(req) {
         ), # end of tabItem
         # 3rd tab: table of Rts and other metrics
         tabItem("table",
-          # TODO: Add column selector so user can pick which columns they want
-          # to see.
           fluidRow(
             box(width = 6,
               dateInput("table_date", label = "Date",
                         min = date_real_range[1], max = date_real_range[2] - 1,
-                        value = date_real_range[2] - 1,
+                        value = date_lag_range[2] - 1,
                         format = "D MM d, yyyy")
             ), # end of box 1
             box(width = 6,
@@ -851,7 +849,7 @@ ui <- function(req) {
           ), # end of fluidRow 1
           # fluidRow 2: selecting columns
           fluidRow(
-            column(width = 8,
+            column(width = 6,
               selectizeInput("table_cols",
                              label = "Select columns for table",
                              choices = table_col_choices,
@@ -862,8 +860,8 @@ ui <- function(req) {
                                             'persist' = FALSE),
                              width = "80%")
             ),
-            column(width = 4,
-              actionButton("table_reset", "Reset"),
+            column(width = 6,
+              actionButton("table_reset", "Reset Columns"),
               downloadButton("table_download", "Download Table"),
               align = "center"
             )
@@ -872,9 +870,12 @@ ui <- function(req) {
           # fluidRow 4: actual table output
           fluidRow(
             h2(textOutput("Rt_table_title")),
-            p("Click a column to sort by that metric."),
+            p(sprintf("Click a column to sort by that metric. Note that Rt is not available beyond %s due to the %d day lag.",
+                      format(date_lag_range[2] - 1, "%a %B %-e, %Y"), lag_rt)),
           ),
-          fluidRow(DT::DTOutput("Rt_table")),
+          fluidRow(
+             div(style = 'overflow-x: scroll', DT::DTOutput("Rt_table"))
+          ),
           fluidRow(
             br(),
             includeMarkdown("assets/Rt_table_footer.md")
@@ -1004,12 +1005,17 @@ server <- function(input, output, session) {
     )
   })
 
-  # update the data based on values
-  # TODO: Fix this
+  # update the data based on inputs
   sf_dat_update <- reactive({
-    shiny::validate(need(input$map_date, "Please select a date."))
+    #shiny::validate(need(input$map_date, "Please select a date."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
     shiny::validate(need(input$map_metric, "Please select a metric."))
+
+    # reactive dependency on date_value
+    # This is because if we change the resolution, the range of valid dates
+    # changes.
+    # Use date_value to set the right value
+    date_value_cur <- date_value()
 
     # if selected resolution starts with 840 is 630 it's a US county
     if (startsWith(input$select_resolution, "840") || input$select_resolution == "630") {
@@ -1020,9 +1026,9 @@ server <- function(input, output, session) {
       state_uid <- NULL
     }
     if (input$map_metric == "rt") {
-      date_touse <- input$map_date + as.difftime(lag_rt, units = "days")
+      date_touse <- date_value_cur + as.difftime(lag_rt, units = "days")
     } else {
-      date_touse <- input$map_date
+      date_touse <- date_value_cur
     }
     sf_by_date_res(date_touse, metric = input$map_metric,
                    sel_resolution = resolution, state_uid = state_uid)
@@ -1116,25 +1122,37 @@ server <- function(input, output, session) {
     })
   })
 
-  # change the date slider / date selector widget
-  # TODO: Fix this
-  observe({
+  # change the date selector widget / send the new date to sf_dat_update
+  # reactive value to store the old metric
+  old_metric <- reactiveValues(val = "rt")
+  date_value <- reactive({
     if (input$map_metric == "rt") {
       min_date <- date_lag_range[1]
-      max_date <- date_lag_range[2]
+      max_date <- date_lag_range[2] - 1
     } else {
       min_date <- date_real_range[1]
       max_date <- date_real_range[2] - 1
     }
+
     new_slider_val <- input$map_date
     if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
-        isTRUE(new_slider_val > max_date)) {
+        isTRUE(new_slider_val > max_date) ||
+        isTRUE(new_slider_val == (date_lag_range[2] - 1))) {
+      # if current value is beyond max range or if current value is the max Rt
+      # date, set it to the max date
       new_slider_val <- max_date
     } else if (new_slider_val < min_date) {
       new_slider_val <- min_date
     }
-    updateDateInput(session, "map_date", value = new_slider_val,
-                    min = min_date, max = max_date)
+
+    if (old_metric$val != input$map_metric) {
+      # only change the date input if the metric changes
+      updateDateInput(session, "map_date", value = new_slider_val,
+                      min = min_date, max = max_date)
+      old_metric$val <- input$map_metric
+    }
+    # send correct date value to sf_dat_update
+    new_slider_val
   })
 
   # Rt over time based on click
@@ -1274,16 +1292,7 @@ server <- function(input, output, session) {
 
   output$heatmap_dl <- downloadHandler(
     filename = function() {
-      if (startsWith(input$select_resolution, "840") ||
-          input$select_resolution == "630") {
-        cur_uid <- input$select_resolution
-        dispID_cur <- sf_all %>%
-          filter(UID == cur_uid) %>%
-          pull(dispID) %>%
-          sub(", [A-Za-z ]+", "", .)
-      } else {
-        dispID_cur <- substring(input$select_resolution, first = 8)
-      }
+      dispID_cur <- dispID_from_res(input$select_resolution)
       fname <- sprintf("%s_%s_heatmap.png", dispID_cur, input$map_metric)
       return(fname)
 
@@ -1336,6 +1345,7 @@ server <- function(input, output, session) {
 
   output$forestplot_dl <- downloadHandler(
     filename = function() {
+      dispID_cur <- dispID_from_res(input$select_resolution)
       if (startsWith(input$select_resolution, "840") ||
           input$select_resolution == "630") {
         cur_uid <- input$select_resolution
@@ -1458,9 +1468,7 @@ server <- function(input, output, session) {
 
     shiny::validate(need(nrow(dat_subset) > 0, "This data has no rows."))
 
-    numeric_cols <- c("rt_lag", "rt_lower_lag", "rt_upper_lag", "case_rate",
-                      "case_lower", "case_upper", "death_rate", "death_lower",
-                      "death_upper")
+    numeric_cols <- unlist(table_col_choices, use.names = FALSE)
     numeric_cols_in_tab <- intersect(numeric_cols, sel_cols)
     dat_subset[, (numeric_cols_in_tab) := lapply(.SD, round, digits = 2),
                .SDcols = numeric_cols_in_tab]
@@ -1484,10 +1492,25 @@ server <- function(input, output, session) {
     setorderv(dat_subset, cols = order_col, order = order_num, na.last = TRUE)
   })
 
+  observeEvent(input$table_reset, {
+    shinyjs::reset("table_cols")
+  })
+
   # Table of current Rts at current resolution
   output$Rt_table <- DT::renderDT({
     rt_table_render()
   }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
+
+  output$table_download <- downloadHandler(
+    filename = function() {
+      dispID_cur <- dispID_from_res(input$select_resolution)
+      return(sprintf("%s_table_%s.tsv", dispID_cur,
+                     format(input$table_date, "%Y-%m-%d")))
+    },
+    content = function(file) {
+      fwrite(rt_table_render(), file = file, sep = "\t")
+    }
+  )
 
 
   ########################################################################
