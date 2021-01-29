@@ -1018,42 +1018,72 @@ server <- function(input, output, session) {
     )
   })
 
+  # change the date selector widget / send the new date to sf_dat_update
+  # reactive value to store the old metric
+  old_metric <- reactiveValues(val = "rt")
+  observeEvent(input$map_metric, {
+    if (input$map_metric == "rt") {
+      min_date <- date_lag_range[1]
+      max_date <- date_lag_range[2] - 1
+    } else {
+      min_date <- date_real_range[1]
+      max_date <- date_real_range[2] - 1
+    }
+
+    new_slider_val <- input$map_date
+    if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
+        isTRUE(new_slider_val > max_date) ||
+        isTRUE(new_slider_val == date_lag_range[2] - 1)) {
+      # if current value is beyond max range or if current value is the max Rt
+      # date, set it to the max date
+      new_slider_val <- max_date
+    } else if (new_slider_val < min_date) {
+      new_slider_val <- min_date
+    }
+    updateDateInput(session, "map_date", value = new_slider_val,
+                    min = min_date, max = max_date)
+  })
+
   # update the data based on inputs
   sf_dat_update <- reactive({
-    #shiny::validate(need(input$map_date, "Please select a date."))
+    shiny::validate(need(input$map_date, "Please select a date."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
     shiny::validate(need(input$map_metric, "Please select a metric."))
+    cur_res <- input$select_resolution
+    cur_metric <- input$map_metric
+    date_value_cur <- input$map_date
 
-    # reactive dependency on date_value
-    # This is because if we change the resolution, the range of valid dates
-    # changes.
-    # Use date_value to set the right value
-    date_value_cur <- date_value()
+    if (cur_metric == "rt") {
+      min_date <- date_lag_range[1]
+      max_date <- date_lag_range[2] - 1
+    } else {
+      min_date <- date_real_range[1]
+      max_date <- date_real_range[2] - 1
+    }
+
+    req(min_date <= date_value_cur && date_value_cur <= max_date)
 
     # if selected resolution starts with 840 is 630 it's a US county
-    if (startsWith(input$select_resolution, "840") || input$select_resolution == "630") {
+    if (startsWith(cur_res, "840") || cur_res == "630") {
       resolution <- "county"
-      state_uid <- input$select_resolution
+      state_uid <- cur_res
     } else {
-      resolution <- input$select_resolution
+      resolution <- cur_res
       state_uid <- NULL
     }
-    if (input$map_metric == "rt") {
+    date_touse <- date_value_cur
+    if (cur_metric == "rt") {
       date_touse <- date_value_cur + as.difftime(lag_rt, units = "days")
-    } else {
-      date_touse <- date_value_cur
     }
-    sf_by_date_res(date_touse, metric = input$map_metric,
+    sf_by_date_res(date_touse, metric = cur_metric,
                    sel_resolution = resolution, state_uid = state_uid)
   })
 
   # change the zoom level only when the resolution changes.
-  observe({
+  observeEvent(input$select_resolution, {
     # set a reactive dependency on select_resolution, but not on sf_dat_update
     res <- input$select_resolution
-    isolate({
-      sf_dat_cur <- sf_dat_update()
-    })
+    sf_dat_cur <- sf_dat_update()
 
     # by default, use bounding box, but these are exceptions where the bounding
     # box doesn't work
@@ -1089,20 +1119,17 @@ server <- function(input, output, session) {
   observe({
     date_select <- format(input$map_date, "%Y-%m-%d")
     sel_resolution <- input$select_resolution
-    shiny::validate(need(date_select, "Please select a date."))
-    shiny::validate(need(sel_resolution, "Please select a resolution."))
-    shiny::validate(need(input$map_metric, "Please select a metric."))
+    cur_metric <- input$map_metric
     sf_dat_cur <- sf_dat_update()
-    labels_final <- master_labeller(sf_dat_cur, date_select, input$map_metric)
-    cur_grpid <- digest::digest(c(date_select, sel_resolution,
-                                  input$map_metric))
+    labels_final <- master_labeller(sf_dat_cur, date_select, cur_metric)
+    cur_grpid <- digest::digest(c(date_select, sel_resolution, cur_metric))
     prev_grpid <- prev_grpid_all_reactive$val
     map <- leafletProxy("map_main", data = sf_dat_cur)
     if (prev_grpid != cur_grpid) {
       suppressWarnings({
         map <- map %>%
           addPolygon_Point(sf_dat_cur, labels = labels_final,
-                           metric = input$map_metric, grpid = cur_grpid) %>%
+                           metric = cur_metric, grpid = cur_grpid) %>%
           clearGroup(prev_grpid)
       })
     }
@@ -1111,7 +1138,7 @@ server <- function(input, output, session) {
   })
 
   # change the legend when the map metric changes
-  observe({
+  observeEvent(input$map_metric, {
     shiny::validate(need(input$map_metric, "Please select a metric."))
 
     # part for changing the map
@@ -1135,42 +1162,8 @@ server <- function(input, output, session) {
     })
   })
 
-  # change the date selector widget / send the new date to sf_dat_update
-  # reactive value to store the old metric
-  old_metric <- reactiveValues(val = "rt")
-  date_value <- reactive({
-    if (input$map_metric == "rt") {
-      min_date <- date_lag_range[1]
-      max_date <- date_lag_range[2] - 1
-    } else {
-      min_date <- date_real_range[1]
-      max_date <- date_real_range[2] - 1
-    }
-
-    new_slider_val <- input$map_date
-    if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
-        isTRUE(new_slider_val > max_date) ||
-        isTRUE(new_slider_val == (date_lag_range[2] - 1))) {
-      # if current value is beyond max range or if current value is the max Rt
-      # date, set it to the max date
-      new_slider_val <- max_date
-    } else if (new_slider_val < min_date) {
-      new_slider_val <- min_date
-    }
-
-    if (old_metric$val != input$map_metric) {
-      # only change the date input if the metric changes
-      updateDateInput(session, "map_date", value = new_slider_val,
-                      min = min_date, max = max_date)
-      old_metric$val <- input$map_metric
-    }
-    # send correct date value to sf_dat_update
-    new_slider_val
-  })
-
   # set up series of event handlers to set the date based on clicking the
   # buttons
-
   observeEvent(input$map_latest, {
     set_date_input(session, "map_date", 0L, input$map_metric)
   })
@@ -1297,7 +1290,7 @@ server <- function(input, output, session) {
 
   # heatmap ggplot object
   heatmap_plot <- reactive({
-    if (isTRUE(identical(input$select_resolution, "county"))) {
+    if (isTRUE(identical(isolate(input$select_resolution), "county"))) {
       blank_plot("Heat Map Not Available for all US Counties")
     } else {
       heat_map(heatmap_data())
@@ -1313,8 +1306,6 @@ server <- function(input, output, session) {
 
   # UI for heatmap: height depends on number of rows
   output$heatmap_ui <- renderUI({
-    shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
-    shiny::validate(need(input$map_metric, "Please select a metric."))
     num_rows <- heatmap_data()$uniqn_dispIDs
     if (input$select_resolution == "county") {
       num_rows <- 0
@@ -1354,7 +1345,7 @@ server <- function(input, output, session) {
 
   # forestplot ggplot object
   forestplot_plot <- reactive({
-    if (isTRUE(identical(input$select_resolution, "county"))) {
+    if (isTRUE(identical(isolate(input$select_resolution), "county"))) {
       blank_plot("Forest Plot Not Available for all US Counties")
     } else {
       forest_plot(forestPlot_data())
@@ -1550,7 +1541,6 @@ server <- function(input, output, session) {
   ########################################################################
   ## Housekeeping stuff
   ########################################################################
-
 
   # trigger bookmarking in URL every time an input changes
   # source: https://shiny.rstudio.com/articles/bookmarking-state.html
