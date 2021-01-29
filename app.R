@@ -813,7 +813,7 @@ ui <- function(req) {
                                             'create' = TRUE,
                                             'persist' = FALSE)),
               selectizeInput("compare_sel_counties", label = "Counties (US)",
-                             choices = place_choices$county,
+                             choices = NULL,
                              multiple = TRUE,
                              options = list('plugins' = list('remove_button'),
                                             'create' = TRUE,
@@ -1396,6 +1396,10 @@ server <- function(input, output, session) {
   ########################################################################
   ## 2nd tab: Compare Rt
   ########################################################################
+
+  # server side selectize
+  updateSelectizeInput(session, "compare_sel_counties",
+                       choices = place_choices$county, server = TRUE)
 
   # get data to plot for Rt comparison
   compare_plt_data <- eventReactive(input$compare_submit, {
