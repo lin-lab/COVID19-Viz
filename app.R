@@ -682,6 +682,18 @@ dispID_from_res <- function(sel_resolution) {
   return(dispID_cur)
 }
 
+set_date_input <- function(session, id, lag,
+                           metric = c("rt", "case", "death")) {
+  metric <- match.arg(metric)
+  if (metric == "rt") {
+    max_date <- date_lag_range[2] - 1
+  } else {
+    max_date <- date_real_range[2] - 1
+  }
+  new_date <- max_date - as.difftime(lag, unit = "days")
+  updateDateInput(session, id, value = new_date)
+}
+
 ########################################################################
 ## Define UI
 ########################################################################
@@ -733,7 +745,11 @@ ui <- function(req) {
                                min = date_lag_range[1],
                                max = date_lag_range[2] - 1,
                                value = date_lag_range[2] - 1,
-                               format = "D MM d, yyyy")
+                               format = "D MM d, yyyy", width = "95%"),
+                   actionButton("map_latest", label = "Latest"),
+                   actionButton("map_2week", label = "2 weeks ago"),
+                   actionButton("map_1month", label = "1 month ago"),
+                   actionButton("map_2month", label = "2 months ago")
             ), # end of column 1
             column(width = 4,
               radioButtons("map_metric", "Metric:",
@@ -1149,6 +1165,22 @@ server <- function(input, output, session) {
     }
     # send correct date value to sf_dat_update
     new_slider_val
+  })
+
+  # set up series of event handlers to set the date based on clicking the
+  # buttons
+
+  observeEvent(input$map_latest, {
+    set_date_input(session, "map_date", 0L, input$map_metric)
+  })
+  observeEvent(input$map_2week, {
+    set_date_input(session, "map_date", 14, input$map_metric)
+  })
+  observeEvent(input$map_1month, {
+    set_date_input(session, "map_date", 30, input$map_metric)
+  })
+  observeEvent(input$map_2month, {
+    set_date_input(session, "map_date", 60, input$map_metric)
   })
 
   # Rt over time based on click
