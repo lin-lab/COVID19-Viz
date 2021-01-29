@@ -789,7 +789,7 @@ ui <- function(req) {
           fluidPage(
             column(width = 4,
               h4("Select areas to compare their Rt."),
-              p("Note the Rt is lagged by 5 days."),
+              p(sprintf("Note the Rt is lagged by %d days.", lag_rt)),
               p("Some areas may not appear in the plot for all time points because of insufficient data."),
               p("Occasionally, locations may have negative values for new cases because of reporting issues."),
               # break up the selection by state, county, and country
