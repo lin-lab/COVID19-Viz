@@ -932,7 +932,6 @@ server <- function(input, output, session) {
   cat("The remote IP is", isolate(input$remote_addr), "\n")
 
   loc_info <- reactiveValues(value = NULL)
-  restored <- reactiveValues(value = FALSE)
 
   observe({
     ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
@@ -958,41 +957,44 @@ server <- function(input, output, session) {
 
   # set resolution of map based on location
   observe({
-    loc_info_cur <- loc_info$value
-    lat <- loc_info_cur$latitude
-    long <- loc_info_cur$longitude
-    latlong_dat <- data.frame(Latitude = lat, Longitude = long)
-    if (nrow(latlong_dat) == 0 || lat < -900 || long < -900) {
-      set_res <- "country"
-    } else {
-      latlong_sf <- latlong_dat %>%
-        st_as_sf(coords = c("Longitude", "Latitude"), crs = st_crs(sf_all))
+    # only set the location from IP address if it's not specified in the URL
+    query <- parseQueryString(session$clientData$url_search)
+    if (is.null(query$select_resolution)) {
 
-      intersected <- suppressMessages({
-        st_intersects(latlong_sf, sf_all)
-      })
-      sf_options <- sf_all[unlist(intersected), ] %>%
-        select(dispID, resolution, UID)
-
-      res_options <- sf_options$resolution
-      #stopifnot(length(res_options) == uniqueN(res_options))
-      #subnat_options <- startsWith(res_options, "subnat_")
-
-      if ("county" %in% res_options) {
-        set_res <- sf_options %>%
-          filter(resolution == "subnat_USA") %>%
-          pull(UID) %>%
-          as.character()
-      } else if (any(startsWith(res_options, "subnat_"))) {
-        set_res <- sf_options %>%
-          filter(resolution == "country") %>%
-          pull(UID) %>%
-          as.character()
-      } else {
+      loc_info_cur <- loc_info$value
+      lat <- loc_info_cur$latitude
+      long <- loc_info_cur$longitude
+      latlong_dat <- data.frame(Latitude = lat, Longitude = long)
+      if (nrow(latlong_dat) == 0 || lat < -900 || long < -900) {
         set_res <- "country"
+      } else {
+        latlong_sf <- latlong_dat %>%
+          st_as_sf(coords = c("Longitude", "Latitude"), crs = st_crs(sf_all))
+
+        intersected <- suppressMessages({
+          st_intersects(latlong_sf, sf_all)
+        })
+        sf_options <- sf_all[unlist(intersected), ] %>%
+          select(dispID, resolution, UID)
+
+        res_options <- sf_options$resolution
+        #stopifnot(length(res_options) == uniqueN(res_options))
+        #subnat_options <- startsWith(res_options, "subnat_")
+
+        if ("county" %in% res_options) {
+          set_res <- sf_options %>%
+            filter(resolution == "subnat_USA") %>%
+            pull(UID) %>%
+            as.character()
+        } else if (any(startsWith(res_options, "subnat_"))) {
+          set_res <- sf_options %>%
+            filter(resolution == "country") %>%
+            pull(UID) %>%
+            as.character()
+        } else {
+          set_res <- "country"
+        }
       }
-    }
-    if (!restored$value) {
       updateSelectInput(session, "select_resolution", selected = set_res)
       updateSelectInput(session, "table_select_resolution", selected = set_res)
     }
@@ -1193,9 +1195,10 @@ server <- function(input, output, session) {
 
   # set clicked UID to null every time the resolution changes or user hits the
   # reset_plot button
-  observe({
+  observeEvent(eventExpr = {
     input$select_resolution
     input$reset_plot
+  }, handlerExpr = {
     # select a random country to plot
     if (input$select_resolution == "country") {
       updateActionButton(session, "reset_plot", label = "Random Country")
@@ -1206,6 +1209,7 @@ server <- function(input, output, session) {
     }
   })
 
+  # get the current UID for click plot
   render_uid <- reactive({
     ret <- click_reactive$cur_uid
     if (is.null(ret)) {
@@ -1227,6 +1231,7 @@ server <- function(input, output, session) {
     ret
   })
 
+  # click plot plotting code
   click_plot_cur <- reactive({
     render_uid_cur <- render_uid()
     shiny::validate(need(render_uid_cur,
@@ -1236,10 +1241,12 @@ server <- function(input, output, session) {
     suppressWarnings(click_plot(plt_dat))
   })
 
+  # actually rendering click plot
   output$map_click_plot <- renderCachedPlot({
     click_plot_cur()
   }, cacheKeyExpr = { render_uid() })
 
+  # click plot download handler
   output$click_plot_dl <- downloadHandler(
     filename = function() {
       cur_uid <- render_uid()
@@ -1555,17 +1562,6 @@ server <- function(input, output, session) {
   })
   onBookmarked(function(url) {
     updateQueryString(url)
-  })
-
-  # Save extra values in state$values when we bookmark
-  #onBookmark(function(state) {
-  #  state$values$loc_info <- loc_info$value
-  #})
-
-  # Read values from state$values when we restore
-  onRestore(function(state) {
-    #loc_info$value <- state$values$loc_info
-    restored$value <- TRUE
   })
 
   # don't remember the following parameters
