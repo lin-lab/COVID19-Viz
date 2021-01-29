@@ -1564,6 +1564,8 @@ server <- function(input, output, session) {
                        "Rt_table_row_last_clicked",
                        "Rt_table_cells_selected",
                        "Rt_table_rows_all",
+                       "map_latest", "map_2week",
+                       "map_1month", "map_2month",
                        "map_main_shape_click",
                        "map_main_shape_mouseover",
                        "map_main_shape_mouseout"))
