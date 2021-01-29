@@ -737,7 +737,6 @@ ui <- function(req) {
           br(),
           fluidRow(
             includeMarkdown("assets/header.md"),
-            p("Use slider to adjust date. Click on an area to see its Rt over time. Click the play button to animate Rt over time."),
           ),
           fluidRow(
             column(width = 4,
