@@ -95,9 +95,9 @@ bins_rt <- c(0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
 bins_cases <- c(0, 50, 100, 250, 500, 750, 1000, Inf)
 bins_deaths <- c(0, 1, 2, 5, 10, 25, 50, Inf)
 colors_rt <- rev(brewer.pal(7, "RdYlBu"))
-colors_rt <- viridis(7, option = "plasma")
+colors_rt <- viridis(7)
 #colors_cases <- brewer.pal(7, "YlOrRd")
-colors_cases <- viridis(7, option = "plasma")
+colors_cases <- viridis(7)
 
 cases_color_labels <- c("0 - 50", "50 - 100", "100 - 250", "250 - 500",
                         "500 - 750", "750 - 1000", "1000+")
@@ -425,14 +425,8 @@ click_plot <- function(plt_dat) {
 }
 
 #' Draw a blank plot
-blank_plot <- function(title = "Insufficient data",
-                       theme = c("dark", "light")) {
-  theme <- match.arg(theme)
-  p <- ggplot() + ggtitle(title)
-  if (theme == "dark") {
-    p <- p + theme_dark()
-  }
-  p <- p +
+blank_plot <- function(title = "Insufficient data") {
+  p <- ggplot() + ggtitle(title) +
     theme(axis.text.y = element_text(size = 16),
           axis.text.x = element_text(size = 16),
           axis.title = element_text(size = 20),
@@ -463,7 +457,7 @@ get_plt_params <- function(metric = c("rt", "case", "death")) {
   return(plt_params)
 }
 
-subset_rt_by_res_date <- function(sel_resolution, date_select = NULL) {
+subset_rt_by_res_date <- function(sel_resolution, date_select = NULL, metric = NULL) {
   if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
     county_uids <- get_county_uids(sel_resolution)
     dat_subset <- rt_long_all[resolution == "county" &
@@ -472,7 +466,9 @@ subset_rt_by_res_date <- function(sel_resolution, date_select = NULL) {
   } else {
     dat_subset <- rt_long_all[resolution == sel_resolution, ]
   }
-  if (!is.null(date_select)) {
+  if (!is.null(metric) && metric == "rt" && !is.null(date_select)) {
+    dat_subset <- dat_subset[date_lag == date_select, ]
+  } else if (!is.null(date_select)) {
     dat_subset <- dat_subset[date == date_select, ]
   }
   return(dat_subset)
@@ -487,7 +483,7 @@ setup_plot_df <- function(sel_resolution, date_select = NULL,
   sorted <- match.arg(sorted)
 
   # first, subset rt_long_all
-  dat_subset <- subset_rt_by_res_date(sel_resolution, date_select)
+  dat_subset <- subset_rt_by_res_date(sel_resolution, date_select, metric)
 
   plt_params <- get_plt_params(metric)
   dat_subset$range <- cut(dat_subset[[plt_params$var]],
@@ -535,15 +531,11 @@ forest_plot <- function(plt_df_params) {
     xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
     p <- ggplot(plt_df,
           aes_string(x = plt_params$var, y = "dispID_ord",
-                      xmin = plt_params$lwr, xmax = plt_params$upr,
-                      color = "range")) +
-      geom_point(size = 3) + geom_errorbarh(size = 2) +
-      scale_color_manual(drop = FALSE, values = color_pal,
-                         name = plt_params$title_str) +
+                      xmin = plt_params$lwr, xmax = plt_params$upr)) +
+      geom_point(size = 3) + geom_pointrange() +
       xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
       #coord_cartesian(xlim = c(0, 5)) +
-      theme_dark() +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
             axis.title = element_text(size = 20),
@@ -551,7 +543,7 @@ forest_plot <- function(plt_df_params) {
             legend.text = element_text(size = 16),
             plot.title = element_text(size = 24))
     if (plt_params$var == "rt") {
-      p <- p + geom_vline(xintercept = 1, lty = 2, color = "white", lwd = 1.5)
+      p <- p + geom_vline(xintercept = 1, lty = 2, color = "black", lwd = 1.5)
     }
     p
   })
@@ -752,7 +744,7 @@ ui <- function(req) {
             ), # end of column 1
             column(width = 4,
               radioButtons("map_metric", "Metric:",
-                          choices = list("Rt (effective reproduction number)" = "rt",
+                          choices = list("Rt (effective reproduction number), lagged 7 days" = "rt",
                                           "Daily new cases per million" = "case",
                                           "Daily new deaths per million" = "death")),
             ), # end of column 2
