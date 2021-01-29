@@ -570,14 +570,14 @@ heat_map <- function(plt_df_params) {
     p <- ggplot(plt_df,
           aes_string(x = plt_params$date_var, y = "dispID_ord",
                     fill = "range")) +
-      geom_tile() +
+      geom_tile(alpha = 0.7) +
       scale_fill_manual(drop = FALSE, values = color_pal,
                         name = plt_params$title_str) +
       xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
       scale_y_discrete(limits = rev(levels(plt_df$dispID_ord))) +
       #coord_cartesian(xlim = c(0, 5)) +
-      scale_x_continuous(expand = c(0, 0)) +
+      scale_x_date(expand = c(0, 0)) +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
             axis.title = element_text(size = 20),
@@ -1032,8 +1032,7 @@ server <- function(input, output, session) {
 
     new_slider_val <- input$map_date
     if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
-        isTRUE(new_slider_val > max_date) ||
-        isTRUE(new_slider_val == date_lag_range[2] - 1)) {
+        isTRUE(new_slider_val > max_date)) {
       # if current value is beyond max range or if current value is the max Rt
       # date, set it to the max date
       new_slider_val <- max_date
@@ -1554,12 +1553,12 @@ server <- function(input, output, session) {
   })
 
   # don't remember the following parameters
-  setBookmarkExclude(c("store", "map_main_center", "map_main_groups",
+  setBookmarkExclude(c("store", "map_main_groups",
                        "Rt_table_state", "sidebarItemExpanded",
                        "sidebarCollapsed",
                        "Rt_table_rows_selected", "Rt_table_columns_selected",
-                       "map_main_zoom", "remote_addr",
-                       "Rt_table_cell_clicked", "map_main_bounds",
+                       "remote_addr",
+                       "Rt_table_cell_clicked",
                        "toggle_more", "reset_plot",
                        "Rt_table_rows_current",
                        "Rt_table_row_last_clicked",
