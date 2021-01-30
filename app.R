@@ -951,6 +951,7 @@ server <- function(input, output, session) {
   observe({
     # only set the location from IP address if it's not specified in the URL
     if (!do_restore$val) {
+      cat(file = stderr(), "Using loc_info to set resolution...\n")
 
       loc_info_cur <- loc_info$value
       lat <- loc_info_cur$latitude
@@ -1072,7 +1073,6 @@ server <- function(input, output, session) {
   observe({
     res <- input$select_resolution
     sf_dat_cur <- sf_dat_update()
-    do_restore$val
 
     # by default, use bounding box, but these are exceptions where the bounding
     # box doesn't work
@@ -1535,46 +1535,9 @@ server <- function(input, output, session) {
   ## Housekeeping stuff
   ########################################################################
 
-  # trigger bookmarking in URL every time an input changes
-  # source: https://shiny.rstudio.com/articles/bookmarking-state.html
-  observe({
-    # Trigger this observer every time an input changes
-    reactiveValuesToList(input)
-    session$doBookmark()
-  })
-
-  onBookmark(function(state) {
-    #state$values$do_restore <- TRUE
-  })
-
   onRestore(function(state) {
     do_restore$val <- TRUE
   })
-
-  onBookmarked(function(url) {
-    updateQueryString(url)
-  })
-
-  # don't remember the following parameters
-  setBookmarkExclude(c("store", "map_main_groups",
-                       "Rt_table_state", "sidebarItemExpanded",
-                       "sidebarCollapsed",
-                       "Rt_table_rows_selected", "Rt_table_columns_selected",
-                       "remote_addr",
-                       "Rt_table_cell_clicked",
-                       "toggle_more", "reset_plot", "compare_reset",
-                       "Rt_table_rows_current",
-                       "Rt_table_row_last_clicked",
-                       "Rt_table_cells_selected",
-                       "Rt_table_rows_all",
-                       "table_reset", "table_cols",
-                       "map_latest", "map_2week",
-                       "map_1month", "map_2month",
-                       "map_main_center", "map_main_zoom", "map_main_bounds",
-                       "map_main_click",
-                       "map_main_shape_click",
-                       "map_main_shape_mouseover",
-                       "map_main_shape_mouseout"))
 
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
   # this to allow the user to be automatically connected
@@ -1583,4 +1546,4 @@ server <- function(input, output, session) {
 }
 
 # Run the application
-shinyApp(ui = ui, server = server, enableBookmarking = "url")
+shinyApp(ui = ui, server = server)
