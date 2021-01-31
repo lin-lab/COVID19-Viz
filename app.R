@@ -1279,11 +1279,12 @@ server <- function(input, output, session) {
 
   # heatmap ggplot object
   heatmap_plot <- reactive({
-    if (isTRUE(identical(isolate(input$select_resolution), "county"))) {
-      blank_plot("Heat Map Not Available for all US Counties")
-    } else {
-      heat_map(heatmap_data())
-    }
+    shiny::validate(need(input$select_resolution != "county",
+                          "Heat Map not available for all US Counties"))
+    heatmap_data_cur <- heatmap_data()
+    shiny::validate(need(nrow(heatmap_data_cur$plt_df) > 0,
+                        "Insufficient data."))
+    heat_map(heatmap_data_cur)
   })
 
   # actually rendering the plot
@@ -1295,9 +1296,10 @@ server <- function(input, output, session) {
 
   # UI for heatmap: height depends on number of rows
   output$heatmap_ui <- renderUI({
-    num_rows <- heatmap_data()$uniqn_dispIDs
     if (input$select_resolution == "county") {
       num_rows <- 0
+    } else {
+      num_rows <- heatmap_data()$uniqn_dispIDs
     }
     #num_rows <- sum(is.na(heatmap_data()[, ..column_select]))
     plt_height <- sprintf("%dpx", max(20 * num_rows, 300))
@@ -1334,11 +1336,12 @@ server <- function(input, output, session) {
 
   # forestplot ggplot object
   forestplot_plot <- reactive({
-    if (isTRUE(identical(isolate(input$select_resolution), "county"))) {
-      blank_plot("Forest Plot Not Available for all US Counties")
-    } else {
-      forest_plot(forestPlot_data())
-    }
+    shiny::validate(need(input$select_resolution != "county",
+                         "Forest Plot not available for all US Counties"))
+    forestPlot_data_cur <- forestPlot_data()
+    shiny::validate(need(nrow(forestPlot_data_cur$plt_df) > 0,
+                        "Insufficient data."))
+    forest_plot(forestPlot_data_cur)
   })
 
   # actually rendering the plot
@@ -1349,9 +1352,10 @@ server <- function(input, output, session) {
 
   # rendering the plot
   output$forestplot_ui <- renderUI({
-    num_rows <- forestPlot_data()$uniqn_dispIDs
     if (input$select_resolution == "county") {
       num_rows <- 0
+    } else {
+      num_rows <- forestPlot_data()$uniqn_dispIDs
     }
     plt_height <- sprintf("%dpx", max(20 * num_rows, 300))
     plotOutput("forestplot", height = plt_height)
