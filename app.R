@@ -1568,7 +1568,6 @@ server <- function(input, output, session) {
                        "table_reset", "table_cols",
                        "map_latest", "map_2week",
                        "map_1month", "map_2month",
-                       "map_main_center", "map_main_zoom", "map_main_bounds",
                        "map_main_shape_click",
                        "map_main_shape_mouseover",
                        "map_main_shape_mouseout"))
