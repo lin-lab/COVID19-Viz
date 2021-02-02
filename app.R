@@ -980,6 +980,7 @@ server <- function(input, output, session) {
       loc_info$value <- input$store$loc_info
     }
     loc_info$resolution <- res_from_locinfo(loc_info$value)
+    print(loc_info$resolution)
   })
 
   ########################################################################
@@ -1006,27 +1007,27 @@ server <- function(input, output, session) {
   })
 
   # change the date selector widget / send the new date to sf_dat_update
-  observeEvent(input$map_metric, {
-    if (input$map_metric == "rt") {
-      min_date <- date_lag_range[1]
-      max_date <- date_lag_range[2] - 1
-    } else {
-      min_date <- date_real_range[1]
-      max_date <- date_real_range[2] - 1
-    }
+  #observeEvent(input$map_metric, {
+  #  if (input$map_metric == "rt") {
+  #    min_date <- date_lag_range[1]
+  #    max_date <- date_lag_range[2] - 1
+  #  } else {
+  #    min_date <- date_real_range[1]
+  #    max_date <- date_real_range[2] - 1
+  #  }
 
-    new_slider_val <- input$map_date
-    if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
-        isTRUE(new_slider_val > max_date)) {
-      # if current value is beyond max range or if current value is the max Rt
-      # date, set it to the max date
-      new_slider_val <- max_date
-    } else if (new_slider_val < min_date) {
-      new_slider_val <- min_date
-    }
-    updateDateInput(session, "map_date", value = new_slider_val,
-                    min = min_date, max = max_date)
-  })
+  #  new_slider_val <- input$map_date
+  #  if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
+  #      isTRUE(new_slider_val > max_date)) {
+  #    # if current value is beyond max range or if current value is the max Rt
+  #    # date, set it to the max date
+  #    new_slider_val <- max_date
+  #  } else if (new_slider_val < min_date) {
+  #    new_slider_val <- min_date
+  #  }
+  #  updateDateInput(session, "map_date", value = new_slider_val,
+  #                  min = min_date, max = max_date)
+  #})
 
   # update the data based on inputs
   sf_dat_update <- reactive({
@@ -1152,13 +1153,13 @@ server <- function(input, output, session) {
     set_date_input(session, "map_date", 0L, input$map_metric)
   })
   observeEvent(input$map_2week, {
-    set_date_input(session, "map_date", 14, input$map_metric)
+    set_date_input(session, "map_date", 14L, input$map_metric)
   })
   observeEvent(input$map_1month, {
-    set_date_input(session, "map_date", 30, input$map_metric)
+    set_date_input(session, "map_date", 30L, input$map_metric)
   })
   observeEvent(input$map_2month, {
-    set_date_input(session, "map_date", 60, input$map_metric)
+    set_date_input(session, "map_date", 60L, input$map_metric)
   })
 
   # Rt over time based on click
@@ -1541,9 +1542,37 @@ server <- function(input, output, session) {
   ## Housekeeping stuff
   ########################################################################
 
-  onRestore(function(state) {
-    do_restore$val <- TRUE
+  # trigger bookmarking in URL every time an input changes
+  # source: https://shiny.rstudio.com/articles/bookmarking-state.html
+  observe({
+    # Trigger this observer every time an input changes
+    reactiveValuesToList(input)
+    session$doBookmark()
   })
+  onBookmarked(function(url) {
+    updateQueryString(url)
+  })
+
+  # don't remember the following parameters
+  setBookmarkExclude(c("store", "map_main_groups",
+                       "Rt_table_state", "sidebarItemExpanded",
+                       "sidebarCollapsed",
+                       "Rt_table_rows_selected", "Rt_table_columns_selected",
+                       "remote_addr",
+                       "Rt_table_cell_clicked",
+                       "toggle_more", "reset_plot",
+                       "Rt_table_rows_current",
+                       "Rt_table_row_last_clicked",
+                       "Rt_table_cells_selected",
+                       "Rt_table_rows_all",
+                       "table_reset", "table_cols",
+                       "map_latest", "map_2week",
+                       "map_1month", "map_2month",
+                       "map_main_center", "map_main_zoom", "map_main_bounds",
+                       "map_main_shape_click",
+                       "map_main_shape_mouseover",
+                       "map_main_shape_mouseout"))
+
 
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
   # this to allow the user to be automatically connected
@@ -1552,4 +1581,4 @@ server <- function(input, output, session) {
 }
 
 # Run the application
-shinyApp(ui = ui, server = server)
+shinyApp(ui = ui, server = server, enableBookmarking = "url")
