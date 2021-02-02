@@ -678,7 +678,6 @@ dispID_from_res <- function(sel_resolution) {
 #'
 #' @param loc_info_cur List that holds the return value from query_ip
 res_from_locinfo <- function(loc_info_cur) {
-  cat(file = stderr(), "Using loc_info to set resolution...\n")
   lat <- loc_info_cur$latitude
   long <- loc_info_cur$longitude
   latlong_dat <- data.frame(Latitude = lat, Longitude = long)
@@ -980,54 +979,11 @@ server <- function(input, output, session) {
       loc_info$value <- input$store$loc_info
     }
     loc_info$resolution <- res_from_locinfo(loc_info$value)
-    print(loc_info$resolution)
   })
 
   ########################################################################
   ## 1st tab: Big Rt Map
   ########################################################################
-
-  # The basic big Rt map
-  output$map_main <- renderLeaflet({
-    suppressWarnings(
-      leaflet(options = leafletOptions(worldCopyJump = TRUE,
-                                       zoomControl = FALSE)) %>%
-        htmlwidgets::onRender("function(el, x) {
-                           L.control.zoom({ position: 'topright' }).addTo(this)
-                           }") %>%
-        setView(0, 30, 2) %>%
-        setMaxBounds(-180, -90, 180, 90) %>%
-        addProviderTiles(providers$Stamen.TonerLite,
-                         options = providerTileOptions(minZoom = 2,
-                                                       noWrap = TRUE)) %>%
-        addLegend(colors = colors_rt, labels = rt_color_labels,
-                  opacity = 0.7, title = "Rt", position = "bottomleft",
-                  layerId = "legend")
-    )
-  })
-
-  # change the date selector widget / send the new date to sf_dat_update
-  #observeEvent(input$map_metric, {
-  #  if (input$map_metric == "rt") {
-  #    min_date <- date_lag_range[1]
-  #    max_date <- date_lag_range[2] - 1
-  #  } else {
-  #    min_date <- date_real_range[1]
-  #    max_date <- date_real_range[2] - 1
-  #  }
-
-  #  new_slider_val <- input$map_date
-  #  if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
-  #      isTRUE(new_slider_val > max_date)) {
-  #    # if current value is beyond max range or if current value is the max Rt
-  #    # date, set it to the max date
-  #    new_slider_val <- max_date
-  #  } else if (new_slider_val < min_date) {
-  #    new_slider_val <- min_date
-  #  }
-  #  updateDateInput(session, "map_date", value = new_slider_val,
-  #                  min = min_date, max = max_date)
-  #})
 
   # update the data based on inputs
   sf_dat_update <- reactive({
@@ -1066,28 +1022,100 @@ server <- function(input, output, session) {
                    sel_resolution = resolution, state_uid = state_uid)
   })
 
-  # change the zoom level when the resolution changes.
-  observe({
+  map_view <- reactive({
+    cat(file = stderr(), "Calling map_view...\n")
     res <- input$select_resolution
-    sf_dat_cur <- sf_dat_update()
+    sf_dat_cur <- isolate(sf_dat_update())
 
     # by default, use bounding box, but these are exceptions where the bounding
     # box doesn't work
-    cur_view <- switch(res,
+    ret <- list()
+    ret$view <- switch(res,
                        "subnat_USA" = c(-96, 37.8, 4),
                        "county" = c(-96, 37.8, 4),
                        "subnat_Canada" = c(-100.78, 51.52, 3),
                        "84000002" = c(-147, 61.31395, 4),
                        NULL)
+    ret$type <- "view"
 
-    if (is.null(cur_view)) {
-      bbox <- as.numeric(st_bbox(sf_dat_cur))
+    if (is.null(ret$view)) {
+      ret$view <- as.numeric(st_bbox(sf_dat_cur))
+      ret$type <- "bbox"
+    }
+    ret
+  })
+
+  # The basic big Rt map
+  output$map_main <- renderLeaflet({
+    map <- leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+      setView(0, 30, 2) %>%
+      setMaxBounds(-180, -90, 180, 90) %>%
+      addProviderTiles(providers$Stamen.TonerLite,
+                        options = providerTileOptions(minZoom = 2,
+                                                      noWrap = TRUE))
+    map_view_cur <- isolate(map_view())
+    if (map_view_cur$type == "bbox") {
+      bbox <- map_view_cur$view
+      map <- map %>%
+        fitBounds(lng1 = bbox[1], lat1 = bbox[2], lng2 = bbox[3],
+                  lat2 = bbox[4])
+    } else {
+      cur_view <- map_view_cur$view
+      map <- map %>%
+        setView(cur_view[1], cur_view[2], cur_view[3])
+    }
+    legend_params <- switch(isolate(input$map_metric),
+      "rt" = list(cur_colors = colors_rt, cur_labels = rt_color_labels,
+                  cur_title = "Rt"),
+      "case" = list(cur_colors = colors_cases, cur_labels = cases_color_labels,
+                    cur_title = "Cases per mil."),
+      "death" = list(cur_colors = colors_cases, cur_labels = deaths_color_labels,
+                     cur_title = "Deaths per mil.")
+    )
+    map <- map %>%
+        addLegend(colors = legend_params$cur_colors,
+                  labels = legend_params$cur_labels,
+                  opacity = 0.7, title = legend_params$cur_title,
+                  position = "bottomleft", layerId = "legend")
+    suppressWarnings(map)
+  })
+
+  # change the date selector widget / send the new date to sf_dat_update
+  #observeEvent(input$map_metric, {
+  #  if (input$map_metric == "rt") {
+  #    min_date <- date_lag_range[1]
+  #    max_date <- date_lag_range[2] - 1
+  #  } else {
+  #    min_date <- date_real_range[1]
+  #    max_date <- date_real_range[2] - 1
+  #  }
+
+  #  new_slider_val <- input$map_date
+  #  if (isTRUE(is.null(new_slider_val)) || isTRUE(is.na(new_slider_val)) ||
+  #      isTRUE(new_slider_val > max_date)) {
+  #    # if current value is beyond max range or if current value is the max Rt
+  #    # date, set it to the max date
+  #    new_slider_val <- max_date
+  #  } else if (new_slider_val < min_date) {
+  #    new_slider_val <- min_date
+  #  }
+  #  updateDateInput(session, "map_date", value = new_slider_val,
+  #                  min = min_date, max = max_date)
+  #})
+
+  # change the zoom level when the resolution changes.
+  observeEvent(map_view(), {
+    map_view_cur <- map_view()
+
+    if (map_view_cur$type == "bbox") {
+      bbox <- map_view_cur$view
       suppressWarnings(
         leafletProxy("map_main", session) %>%
           fitBounds(lng1 = bbox[1], lat1 = bbox[2], lng2 = bbox[3],
                     lat2 = bbox[4])
       )
     } else {
+      cur_view <- map_view_cur$view
       suppressWarnings(
         leafletProxy("map_main", session) %>%
           setView(cur_view[1], cur_view[2], cur_view[3])
@@ -1102,10 +1130,10 @@ server <- function(input, output, session) {
 
   # change the shapes on the map when the resolution or date changes
   observe({
-    date_select <- format(input$map_date, "%Y-%m-%d")
-    sel_resolution <- input$select_resolution
-    cur_metric <- input$map_metric
     sf_dat_cur <- sf_dat_update()
+    date_select <- format(isolate(input$map_date), "%Y-%m-%d")
+    sel_resolution <- isolate(input$select_resolution)
+    cur_metric <- isolate(input$map_metric)
     labels_final <- master_labeller(sf_dat_cur, date_select, cur_metric)
     cur_grpid <- digest::digest(c(date_select, sel_resolution, cur_metric))
     prev_grpid <- prev_grpid_all_reactive$val
@@ -1164,7 +1192,7 @@ server <- function(input, output, session) {
 
   # Rt over time based on click
   click_reactive <- reactiveValues(cur_uid = NULL)
-  observe({
+  observeEvent(input$map_main_shape_click, {
     req(input$map_main_shape_click)
     req(input$map_main_shape_click$id)
     click_reactive$cur_uid <- input$map_main_shape_click$id
@@ -1568,6 +1596,7 @@ server <- function(input, output, session) {
                        "table_reset", "table_cols",
                        "map_latest", "map_2week",
                        "map_1month", "map_2month",
+                       "map_main_center", "map_main_zoom", "map_main_bounds",
                        "map_main_shape_click",
                        "map_main_shape_mouseover",
                        "map_main_shape_mouseout"))
