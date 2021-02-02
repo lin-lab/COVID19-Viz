@@ -170,7 +170,7 @@ resolution_names[, pretty := fcase(orig == "country", "World",
                                    paste0(country, " Subnational"))]
 setorderv(resolution_names, cols = "country")
 
-resolution_choices <- list("World" = "country")
+resolution_choices <- list("Auto-detected" = "auto", "World" = "country")
 subnat_choices <- as.list(resolution_names[resolution == "subnat", orig])
 names(subnat_choices) <- resolution_names[resolution == "subnat", pretty]
 resolution_choices$Subnational <- subnat_choices
@@ -674,6 +674,45 @@ dispID_from_res <- function(sel_resolution) {
   return(dispID_cur)
 }
 
+#' Set resolution from location
+#'
+#' @param loc_info_cur List that holds the return value from query_ip
+res_from_locinfo <- function(loc_info_cur) {
+  cat(file = stderr(), "Using loc_info to set resolution...\n")
+  lat <- loc_info_cur$latitude
+  long <- loc_info_cur$longitude
+  latlong_dat <- data.frame(Latitude = lat, Longitude = long)
+  if (nrow(latlong_dat) == 0 || lat < -900 || long < -900) {
+    set_res <- "country"
+  } else {
+    latlong_sf <- latlong_dat %>%
+      st_as_sf(coords = c("Longitude", "Latitude"), crs = st_crs(sf_all))
+
+    intersected <- suppressMessages({
+      st_intersects(latlong_sf, sf_all)
+    })
+    sf_options <- sf_all[unlist(intersected), ] %>%
+      select(dispID, resolution, UID)
+
+    res_options <- sf_options$resolution
+
+    if ("county" %in% res_options) {
+      set_res <- sf_options %>%
+        filter(resolution == "subnat_USA") %>%
+        pull(UID) %>%
+        as.character()
+    } else if (any(startsWith(res_options, "subnat_"))) {
+      set_res <- sf_options %>%
+        filter(resolution == "country") %>%
+        pull(UID) %>%
+        as.character()
+    } else {
+      set_res <- "country"
+    }
+  }
+  return(set_res)
+}
+
 set_date_input <- function(session, id, lag,
                            metric = c("rt", "case", "death")) {
   metric <- match.arg(metric)
@@ -751,7 +790,7 @@ ui <- function(req) {
             column(width = 4,
               selectInput("select_resolution", "Resolution:",
                           choices = resolution_choices,
-                          selected = "country"),
+                          selected = "auto"),
               actionButton("reset_plot", label = "Reset Plot"),
               downloadButton("click_plot_dl", "Download Plot")
             ) # end of column 3
@@ -922,7 +961,7 @@ server <- function(input, output, session) {
   ########################################################################
   cat("The remote IP is", isolate(input$remote_addr), "\n")
 
-  loc_info <- reactiveValues(value = NULL)
+  loc_info <- reactiveValues(value = NULL, resolution = NULL)
 
   observe({
     ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
@@ -940,57 +979,12 @@ server <- function(input, output, session) {
       }
       loc_info$value <- input$store$loc_info
     }
+    loc_info$resolution <- res_from_locinfo(loc_info$value)
   })
 
   ########################################################################
   ## 1st tab: Big Rt Map
   ########################################################################
-
-  # set resolution of map based on location
-  do_restore <- reactiveValues(val = FALSE)
-  observe({
-    # only set the location from IP address if it's not specified in the URL
-    if (!do_restore$val) {
-      cat(file = stderr(), "Using loc_info to set resolution...\n")
-
-      loc_info_cur <- loc_info$value
-      lat <- loc_info_cur$latitude
-      long <- loc_info_cur$longitude
-      latlong_dat <- data.frame(Latitude = lat, Longitude = long)
-      if (nrow(latlong_dat) == 0 || lat < -900 || long < -900) {
-        set_res <- "country"
-      } else {
-        latlong_sf <- latlong_dat %>%
-          st_as_sf(coords = c("Longitude", "Latitude"), crs = st_crs(sf_all))
-
-        intersected <- suppressMessages({
-          st_intersects(latlong_sf, sf_all)
-        })
-        sf_options <- sf_all[unlist(intersected), ] %>%
-          select(dispID, resolution, UID)
-
-        res_options <- sf_options$resolution
-        #stopifnot(length(res_options) == uniqueN(res_options))
-        #subnat_options <- startsWith(res_options, "subnat_")
-
-        if ("county" %in% res_options) {
-          set_res <- sf_options %>%
-            filter(resolution == "subnat_USA") %>%
-            pull(UID) %>%
-            as.character()
-        } else if (any(startsWith(res_options, "subnat_"))) {
-          set_res <- sf_options %>%
-            filter(resolution == "country") %>%
-            pull(UID) %>%
-            as.character()
-        } else {
-          set_res <- "country"
-        }
-      }
-      updateSelectInput(session, "select_resolution", selected = set_res)
-      updateSelectInput(session, "table_select_resolution", selected = set_res)
-    }
-  })
 
   # The basic big Rt map
   output$map_main <- renderLeaflet({
@@ -1039,7 +1033,8 @@ server <- function(input, output, session) {
     shiny::validate(need(input$map_date, "Please select a date."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
     shiny::validate(need(input$map_metric, "Please select a metric."))
-    cur_res <- input$select_resolution
+    cur_res <- ifelse(input$select_resolution == "auto",
+                      loc_info$resolution, input$select_resolution)
     cur_metric <- input$map_metric
     date_value_cur <- input$map_date
 
@@ -1051,6 +1046,7 @@ server <- function(input, output, session) {
       max_date <- date_real_range[2] - 1
     }
 
+    # check that date is in bounds
     req(min_date <= date_value_cur && date_value_cur <= max_date)
 
     # if selected resolution starts with 840 is 630 it's a US county
@@ -1096,7 +1092,6 @@ server <- function(input, output, session) {
           setView(cur_view[1], cur_view[2], cur_view[3])
       )
     }
-
   })
 
   # change the default clicked object when resolution changes
@@ -1181,7 +1176,10 @@ server <- function(input, output, session) {
     input$reset_plot
   }, handlerExpr = {
     # select a random country to plot
-    if (input$select_resolution == "country") {
+    cur_resolution <- ifelse(input$select_resolution == "auto",
+                             loc_info$resolution,
+                             input$select_resolution)
+    if (cur_resolution == "country") {
       updateActionButton(session, "reset_plot", label = "Random Country")
       click_reactive$cur_uid <- sample(country_uids, 1)
     } else {
@@ -1193,19 +1191,21 @@ server <- function(input, output, session) {
   # get the current UID for click plot
   render_uid <- reactive({
     ret <- click_reactive$cur_uid
+    cur_res <- ifelse(input$select_resolution == "auto", loc_info$resolution,
+                      input$select_resolution)
     if (is.null(ret)) {
-      if (isTRUE(startsWith(input$select_resolution, "subnat_"))) {
-        if (isTRUE(identical(input$select_resolution, "subnat_USA"))) {
+      if (isTRUE(startsWith(cur_res, "subnat_"))) {
+        if (isTRUE(identical(cur_res, "subnat_USA"))) {
           ret <- 840
         } else {
-          country_name <- substring(input$select_resolution, first = 8)
+          country_name <- substring(cur_res, first = 8)
           country_uid <- rt_long_all[dispID == country_name, UID]
           if (isTRUE(uniqueN(country_uid) == 1)) {
             ret <- unique(country_uid)
           }
         }
-      } else if (isTRUE(startsWith(input$select_resolution, "840")) ||
-                isTRUE(identical(input$select_resolution, "630"))) {
+      } else if (isTRUE(startsWith(cur_res, "840")) ||
+                isTRUE(identical(cur_res, "630"))) {
         ret <- as.integer(input$select_resolution)
       }
     }
@@ -1477,7 +1477,9 @@ server <- function(input, output, session) {
   })
 
   rt_table_render <- reactive({
-    sel_resolution <- input$table_select_resolution
+    sel_resolution <- ifelse(input$table_select_resolution == "auto",
+                             loc_info$resolution,
+                             input$table_select_resolution)
     date_select <- format(input$table_date, "%Y-%m-%d")
     sel_cols <- input$table_cols
     shiny::validate(need(date_select, "Please select a date."))
