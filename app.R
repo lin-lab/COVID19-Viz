@@ -838,8 +838,9 @@ ui <- function(req) {
               # break up the selection by state, county, and country
               # source for remove button:
               # https://gist.github.com/pvictor/ee154cc600e82f3ed2ce0a333bc7d015
-              selectizeInput("compare_sel_states", label = "States/Provinces",
-                             choices = place_choices$us_state,
+              selectizeInput("compare_sel_states", label = "States/Provinces/Subnational",
+                             choices = c(place_choices$us_state,
+                                         place_choices$subnat),
                              multiple = TRUE,
                              options = list('plugins' = list('remove_button'),
                                             'create' = TRUE,
