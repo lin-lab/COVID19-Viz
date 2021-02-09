@@ -1095,8 +1095,15 @@ server <- function(input, output, session) {
   })
 
   # The basic big Rt map
+  # We isolate all the reactives because we want this to trigger only on
+  # startup. Any other time, we use the observers and leafletproxy so we don't
+  # need to re-draw the leaflet tiles
   output$map_main <- renderLeaflet({
-    map <- leaflet(options = leafletOptions(worldCopyJump = TRUE)) %>%
+    map <- leaflet(options = leafletOptions(worldCopyJump = TRUE,
+                                       zoomControl = FALSE)) %>%
+        htmlwidgets::onRender("function(el, x) {
+                           L.control.zoom({ position: 'topright' }).addTo(this)
+                           }") %>%
       setView(0, 30, 2) %>%
       setMaxBounds(-180, -90, 180, 90) %>%
       addProviderTiles(providers$Stamen.TonerLite,
