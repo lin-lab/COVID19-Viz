@@ -1285,6 +1285,8 @@ server <- function(input, output, session) {
   # get the current UID for click plot
   render_uid <- reactive({
     ret <- click_reactive$cur_uid
+    req(input$select_resolution)
+    req(loc_info$resolution)
     cur_res <- ifelse(input$select_resolution == "auto", loc_info$resolution,
                       input$select_resolution)
     if (is.null(ret)) {
@@ -1529,7 +1531,9 @@ server <- function(input, output, session) {
     metric_lst_touse <- isolate(input$compare_metric)
 
     plt_lst <- compare_plot(cur_dat, metric_lst = metric_lst_touse)
-    plot_grid(plotlist = plt_lst, ncol = 1, align = "v", axis = "l")
+    suppressWarnings(
+      plot_grid(plotlist = plt_lst, ncol = 1, align = "v", axis = "l")
+    )
   })
 
   # boilerplate to show the plot
