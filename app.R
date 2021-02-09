@@ -881,7 +881,11 @@ ui <- function(req) {
               dateInput("table_date", label = "Date",
                         min = date_real_range[1], max = date_real_range[2] - 1,
                         value = date_lag_range[2] - 1,
-                        format = "D MM d, yyyy")
+                        format = "D MM d, yyyy"),
+                actionButton("table_latest", label = "Latest"),
+                actionButton("table_2week", label = "2 weeks ago"),
+                actionButton("table_1month", label = "1 month ago"),
+                actionButton("table_2month", label = "2 months ago"),
             ), # end of box 1
             box(width = 6,
               selectInput("table_select_resolution", "Resolution:",
@@ -1588,6 +1592,19 @@ server <- function(input, output, session) {
       }
     }
     setorderv(dat_subset, cols = order_col, order = order_num, na.last = TRUE)
+  })
+
+  observeEvent(input$table_latest, {
+    set_date_input(session, "table_date", 0L, "rt")
+  })
+  observeEvent(input$table_2week, {
+    set_date_input(session, "table_date", 14L, "rt")
+  })
+  observeEvent(input$table_1month, {
+    set_date_input(session, "table_date", 30L, "rt")
+  })
+  observeEvent(input$table_2month, {
+    set_date_input(session, "table_date", 60L, "rt")
   })
 
   observeEvent(input$table_reset, {
