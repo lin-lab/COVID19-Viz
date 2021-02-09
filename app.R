@@ -18,6 +18,7 @@ library(DT)
 library(digest)
 library(ggplot2)
 library(cowplot)
+library(ggsci)
 library(viridis)
 library(htmltools)
 library(purrr)
@@ -592,8 +593,8 @@ compare_plt_helper <- function(dt, x, y, metric_str, ci_lwr = NULL,
   title_str <- sprintf("Comparison of %s", metric_str)
   plt <- ggplot(dt, aes_string(x = x, y = y, color = color)) +
     geom_line() + geom_point() +
-    scale_color_discrete(name = "Location") +
-    scale_fill_discrete(name = "Location") +
+    ggsci::scale_fill_nejm(name = "Location") +
+    ggsci::scale_color_nejm(name = "Location") +
     coord_cartesian(ylim = c(0, NA)) +
     ggtitle(title_str) + ylab("") +
     theme(text = element_text(size = 18),
