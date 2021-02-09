@@ -1256,19 +1256,27 @@ server <- function(input, output, session) {
 
   # set clicked UID to null every time the resolution changes or user hits the
   # reset_plot button
+  observe({
+    cur_resolution <- ifelse(input$select_resolution == "auto",
+                             loc_info$resolution,
+                             input$select_resolution)
+    if (cur_resolution == "country") {
+      updateActionButton(session, "reset_plot", label = "Random Country")
+    } else {
+      updateActionButton(session, "reset_plot", label = "Reset Plot")
+    }
+  })
   observeEvent(eventExpr = {
-    input$select_resolution
     input$reset_plot
+    input$select_resolution
   }, handlerExpr = {
     # select a random country to plot
     cur_resolution <- ifelse(input$select_resolution == "auto",
                              loc_info$resolution,
                              input$select_resolution)
     if (cur_resolution == "country") {
-      updateActionButton(session, "reset_plot", label = "Random Country")
       click_reactive$cur_uid <- sample(country_uids, 1)
     } else {
-      updateActionButton(session, "reset_plot", label = "Reset Plot")
       click_reactive$cur_uid <- NULL
     }
   })
