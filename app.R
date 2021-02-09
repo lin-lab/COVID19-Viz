@@ -1072,7 +1072,6 @@ server <- function(input, output, session) {
   })
 
   map_view <- reactive({
-    cat(file = stderr(), "Calling map_view...\n")
     res <- input$select_resolution
     sf_dat_cur <- isolate(sf_dat_update())
 
@@ -1366,7 +1365,9 @@ server <- function(input, output, session) {
   heatmap_data <- reactive({
     shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
     shiny::validate(need(input$map_metric, "Please select a metric."))
-    setup_plot_df(input$select_resolution, metric = input$map_metric,
+    cur_res <- ifelse(input$select_resolution == "auto",
+                      loc_info$resolution, input$select_resolution)
+    setup_plot_df(cur_res, metric = input$map_metric,
                   sorted = "alphabetical")
   })
 
@@ -1423,7 +1424,9 @@ server <- function(input, output, session) {
     shiny::validate(need(input$map_metric, "Please select a metric."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
     date_select <- format(input$map_date, "%Y-%m-%d")
-    setup_plot_df(input$select_resolution, date_select = date_select,
+    cur_res <- ifelse(input$select_resolution == "auto",
+                      loc_info$resolution, input$select_resolution)
+    setup_plot_df(cur_res, date_select = date_select,
                   metric = input$map_metric, sorted = "metric")
   })
 
