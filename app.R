@@ -772,13 +772,14 @@ ui <- function(req) {
             column(width = 4,
                    dateInput("map_date", label = "Date (lagged by 7 days for Rt)",
                                min = date_lag_range[1],
-                               max = date_lag_range[2] - 1,
+                               max = date_real_range[2] - 1,
                                value = date_lag_range[2] - 1,
                                format = "D MM d, yyyy", width = "95%"),
                    actionButton("map_latest", label = "Latest"),
                    actionButton("map_2week", label = "2 weeks ago"),
                    actionButton("map_1month", label = "1 month ago"),
-                   actionButton("map_2month", label = "2 months ago")
+                   actionButton("map_2month", label = "2 months ago"),
+                   textOutput("date_warning")
             ), # end of column 1
             column(width = 4,
               radioButtons("map_metric", "Metric:",
@@ -993,7 +994,7 @@ server <- function(input, output, session) {
     cur_res <- ifelse(input$select_resolution == "auto",
                       loc_info$resolution, input$select_resolution)
     cur_metric <- input$map_metric
-    date_value_cur <- input$map_date
+    date_value_selected <- input$map_date
 
     if (cur_metric == "rt") {
       min_date <- date_lag_range[1]
@@ -1004,6 +1005,13 @@ server <- function(input, output, session) {
     }
 
     # check that date is in bounds
+    if (date_value_selected < min_date) {
+      date_value_cur <- min_date
+    } else if (date_value_selected > max_date) {
+      date_value_cur <- max_date
+    } else {
+      date_value_cur <- date_value_selected
+    }
     req(min_date <= date_value_cur && date_value_cur <= max_date)
 
     # if selected resolution starts with 840 is 630 it's a US county
@@ -1014,12 +1022,49 @@ server <- function(input, output, session) {
       resolution <- cur_res
       state_uid <- NULL
     }
-    date_touse <- date_value_cur
     if (cur_metric == "rt") {
       date_touse <- date_value_cur + as.difftime(lag_rt, units = "days")
+    } else {
+      date_touse <- date_value_cur
     }
     sf_by_date_res(date_touse, metric = cur_metric,
                    sel_resolution = resolution, state_uid = state_uid)
+  })
+
+  output$date_warning <- renderText({
+    date_value_selected <- input$map_date
+    cur_metric <- input$map_metric
+    req(date_value_selected)
+    req(cur_metric)
+
+    if (cur_metric == "rt") {
+      min_date <- date_lag_range[1]
+      max_date <- date_lag_range[2] - 1
+    } else {
+      min_date <- date_real_range[1]
+      max_date <- date_real_range[2] - 1
+    }
+
+    metric_txt <- switch(cur_metric,
+                         "rt" = "Rt",
+                         "case" = "Case rate",
+                         "death" = "Death rate")
+
+
+    if (date_value_selected < min_date) {
+      date_value_cur <- min_date
+      txt <- sprintf("Showing %s for %s because it is not available before this date.",
+                     metric_txt,
+                     format(min_date, "%Y-%m-%d"))
+    } else if (date_value_selected > max_date) {
+      date_value_cur <- max_date
+      txt <- sprintf("Showing %s for %s because it is not available before this date.",
+                     metric_txt,
+                     format(max_date, "%Y-%m-%d"))
+    } else {
+      txt <- NULL
+    }
+    txt
   })
 
   map_view <- reactive({
