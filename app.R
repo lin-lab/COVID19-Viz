@@ -1289,6 +1289,7 @@ server <- function(input, output, session) {
     req(loc_info$resolution)
     cur_res <- ifelse(input$select_resolution == "auto", loc_info$resolution,
                       input$select_resolution)
+    cat(file = stderr(), sprintf("%s\n", cur_res))
     if (is.null(ret)) {
       if (isTRUE(startsWith(cur_res, "subnat_"))) {
         if (isTRUE(identical(cur_res, "subnat_USA"))) {
@@ -1304,6 +1305,7 @@ server <- function(input, output, session) {
                 isTRUE(identical(cur_res, "630"))) {
         ret <- as.integer(input$select_resolution)
       }
+      cat(file = stderr(), sprintf("Setting resolution to %d", ret))
     }
     ret
   })
