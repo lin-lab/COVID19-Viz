@@ -1064,7 +1064,7 @@ server <- function(input, output, session) {
                      format(min_date, "%Y-%m-%d"))
     } else if (date_value_selected > max_date) {
       date_value_cur <- max_date
-      txt <- sprintf("Showing %s for %s because it is not available before this date.",
+      txt <- sprintf("Showing %s for %s because it is not available after this date.",
                      metric_txt,
                      format(max_date, "%Y-%m-%d"))
     } else {
@@ -1429,10 +1429,26 @@ server <- function(input, output, session) {
     shiny::validate(need(input$map_date, "Please select a date."))
     shiny::validate(need(input$map_metric, "Please select a metric."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
-    date_select <- format(input$map_date, "%Y-%m-%d")
+    date_value_selected <- format(input$map_date, "%Y-%m-%d")
     cur_res <- ifelse(input$select_resolution == "auto",
                       loc_info$resolution, input$select_resolution)
-    setup_plot_df(cur_res, date_select = date_select,
+    if (input$map_metric == "rt") {
+      min_date <- date_lag_range[1]
+      max_date <- date_lag_range[2] - 1
+    } else {
+      min_date <- date_real_range[1]
+      max_date <- date_real_range[2] - 1
+    }
+
+    # check that date is in bounds
+    if (date_value_selected < min_date) {
+      date_value_cur <- min_date
+    } else if (date_value_selected > max_date) {
+      date_value_cur <- max_date
+    } else {
+      date_value_cur <- date_value_selected
+    }
+    setup_plot_df(cur_res, date_select = date_value_cur,
                   metric = input$map_metric, sorted = "metric")
   })
 
