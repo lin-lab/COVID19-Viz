@@ -626,7 +626,7 @@ compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
   }
 
   if (x == "date_lag") {
-    plt <- plt + xlab("Date (lagged 5 days)")
+    plt <- plt + xlab(sprintf("Date (lagged %d days)", lag_rt))
   } else if (x == "date") {
     plt <- plt + xlab("Date")
   }
@@ -792,11 +792,13 @@ ui <- function(req) {
           ),
           fluidRow(
             column(width = 4,
-                   dateInput("map_date", label = "Date (lagged by 7 days for Rt)",
-                               min = date_lag_range[1],
-                               max = date_real_range[2] - 1,
-                               value = date_lag_range[2] - 1,
-                               format = "D MM d, yyyy", width = "95%"),
+                   dateInput("map_date",
+                             label = sprintf("Date (lagged by %d days for Rt)",
+                                             lag_rt),
+                             min = date_lag_range[1],
+                             max = date_real_range[2] - 1,
+                             value = date_lag_range[2] - 1,
+                             format = "D MM d, yyyy", width = "95%"),
                    actionButton("map_latest", label = "Latest"),
                    actionButton("map_2week", label = "2 weeks ago"),
                    actionButton("map_1month", label = "1 month ago"),
@@ -1718,6 +1720,7 @@ server <- function(input, output, session) {
                        "Rt_table_row_last_clicked",
                        "Rt_table_cells_selected",
                        "Rt_table_rows_all",
+                       "compare_reset",
                        "table_reset", "table_cols",
                        "map_latest", "map_2week",
                        "map_1month", "map_2month",
