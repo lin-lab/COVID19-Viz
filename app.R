@@ -530,13 +530,18 @@ forest_plot <- function(plt_df_params) {
     }
     title_str <- sprintf("%s on %s", plt_params$title_str, date_select)
     xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
+    if (all(plt_df[[plt_params$upr]] < 10)) {
+      xlim_max <- NA
+    } else {
+      xlim_max <- max(plt_df[[plt_params$var]]) + 1
+    }
     p <- ggplot(plt_df,
           aes_string(x = plt_params$var, y = "dispID_ord",
                       xmin = plt_params$lwr, xmax = plt_params$upr)) +
       geom_point(size = 3) + geom_pointrange() +
       xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
-      #coord_cartesian(xlim = c(0, 5)) +
+      coord_cartesian(xlim = c(0, xlim_max)) +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
             axis.title = element_text(size = 20),
@@ -587,7 +592,7 @@ heat_map <- function(plt_df_params) {
 #' Helper for compare_plot
 #'
 #' Actual function that draws the plot.
-compare_plt_helper <- function(dt, x, y, metric_str, ci_lwr = NULL,
+compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
                                ci_upr = NULL, color = "dispID", fill = "dispID",
                                yintercept = NA) {
   title_str <- sprintf("Comparison of %s", metric_str)
@@ -595,10 +600,19 @@ compare_plt_helper <- function(dt, x, y, metric_str, ci_lwr = NULL,
     geom_line() + geom_point() +
     ggsci::scale_fill_nejm(name = "Location") +
     ggsci::scale_color_nejm(name = "Location") +
-    coord_cartesian(ylim = c(0, NA)) +
     ggtitle(title_str) + ylab("") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15))
+
+  if (!is.null(ci_upr) &&
+      !all(is.na(dt[[ci_upr]])) &&
+      isTRUE(max(dt[[ci_upr]], na.rm = TRUE) > max_value)) {
+    max_value_plt <- max_value
+  } else {
+    max_value_plt <- NA
+  }
+
+  plt <- plt + coord_cartesian(ylim = c(0, max_value_plt))
 
   if (!is.null(ci_lwr)) {
     stopifnot(!is.null(ci_upr))
@@ -632,11 +646,11 @@ compare_plot <- function(dt, metric_lst) {
   for (met in metric_lst) {
     plt_params <- switch(met,
       "rt" = list(x = "date_lag", y = met, ci_lwr = "rt_lower",
-                  ci_upr = "rt_upper", yintercept = 1),
+                  ci_upr = "rt_upper", yintercept = 1, max_value = 10),
       "case_rate" = list(x = "date", y = met, ci_lwr = "case_lower",
-                          ci_upr = "case_upper"),
+                          ci_upr = "case_upper", max_value = 10000),
       "death_rate" = list(x = "date", y = met, ci_lwr = "death_lower",
-                          ci_upr = "death_upper"),
+                          ci_upr = "death_upper", max_value = 1000),
       list(x = "date", y = met)
     )
     plt_params$metric_str <- switch(met,
@@ -713,6 +727,13 @@ res_from_locinfo <- function(loc_info_cur) {
   return(set_res)
 }
 
+#' Update a date input to a specified lag from the max date. To be used with the
+#' buttons under the date input.
+#'
+#' @param session Session for server.
+#' @param id ID of date input.
+#' @param lag Days before the max date to set the date input to.
+#' @param metric Which metric to consider.
 set_date_input <- function(session, id, lag,
                            metric = c("rt", "case", "death")) {
   metric <- match.arg(metric)
