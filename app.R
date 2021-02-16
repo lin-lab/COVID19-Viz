@@ -444,16 +444,18 @@ get_plt_params <- function(metric = c("rt", "case", "death")) {
   metric <- match.arg(metric)
   plt_params <- switch(metric,
     "rt" = list(bins = bins_rt, var = "rt", lwr = "rt_lower", upr = "rt_upper",
-                labels = rt_color_labels, color = colors_rt,
+                labels = rt_color_labels, color = colors_rt, max_value = 10,
                 date_var = "date_lag", title_str = "Rt"),
     "case" = list(bins = bins_cases, var = "case_rate", lwr = "case_lower",
                   upr = "case_upper", labels = cases_color_labels,
-                  color = colors_cases, date_var = "date",
-                  title_str = "Case Rate per Million"),
+                  color = colors_cases, date_var = "date", max_value = 10000,
+                  title_str = "Case Rate per Million",
+                  legend_title = "Case Rate\nper Million"),
     "death" = list(bins = bins_deaths, var = "death_rate", lwr = "death_lower",
                    upr = "death_upper", labels = deaths_color_labels,
-                   color = colors_cases, date_var = "date",
-                   title_str = "Death Rate per Million")
+                   color = colors_cases, date_var = "date", max_value = 1000,
+                   title_str = "Death Rate per Million",
+                   legend_title = "Death Rate\nper Million")
   )
   return(plt_params)
 }
@@ -530,7 +532,7 @@ forest_plot <- function(plt_df_params) {
     }
     title_str <- sprintf("%s on %s", plt_params$title_str, date_select)
     xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
-    if (all(plt_df[[plt_params$upr]] < 10)) {
+    if (all(plt_df[[plt_params$upr]] < plt_params$max_value)) {
       xlim_max <- NA
     } else {
       xlim_max <- max(plt_df[[plt_params$var]]) + 1
@@ -570,11 +572,10 @@ heat_map <- function(plt_df_params) {
                     fill = "range")) +
       geom_tile(alpha = 0.7) +
       scale_fill_manual(drop = FALSE, values = color_pal,
-                        name = plt_params$title_str) +
+                        name = plt_params$legend_title) +
       xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
       scale_y_discrete(limits = rev(levels(plt_df$dispID_ord))) +
-      #coord_cartesian(xlim = c(0, 5)) +
       scale_x_date(expand = c(0, 0)) +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
