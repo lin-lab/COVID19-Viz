@@ -1680,7 +1680,9 @@ server <- function(input, output, session) {
   # Table of current Rts at current resolution
   output$Rt_table <- DT::renderDT({
     rt_table_render()
-  }, server = FALSE, options = list(pageLength = 25), callback = dt_js_callback)
+  },
+  server = FALSE, options = list(pageLength = 25), selection = "none",
+  callback = dt_js_callback)
 
   output$table_download <- downloadHandler(
     filename = function() {
