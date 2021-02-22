@@ -916,7 +916,7 @@ ui <- function(req) {
             box(width = 6,
               selectInput("table_select_resolution", "Resolution:",
                           choices = resolution_choices,
-                          selected = "country")
+                          selected = "auto")
             ) # end of box 2
           ), # end of fluidRow 1
           # fluidRow 2: selecting columns
@@ -1432,7 +1432,9 @@ server <- function(input, output, session) {
 
   output$heatmap_dl <- downloadHandler(
     filename = function() {
-      dispID_cur <- dispID_from_res(input$select_resolution)
+      cur_res <- ifelse(input$select_resolution == "auto", loc_info$resolution,
+                        input$select_resolution)
+      dispID_cur <- dispID_from_res(cur_res)
       fname <- sprintf("%s_%s_heatmap.png", dispID_cur, input$map_metric)
       return(fname)
 
@@ -1505,16 +1507,16 @@ server <- function(input, output, session) {
 
   output$forestplot_dl <- downloadHandler(
     filename = function() {
-      dispID_cur <- dispID_from_res(input$select_resolution)
-      if (startsWith(input$select_resolution, "840") ||
-          input$select_resolution == "630") {
-        cur_uid <- input$select_resolution
+      cur_res <- ifelse(input$select_resolution == "auto", loc_info$resolution,
+                        input$select_resolution)
+      if (startsWith(cur_res, "840") || cur_res == "630") {
+        cur_uid <- cur_res
         dispID_cur <- sf_all %>%
           filter(UID == cur_uid) %>%
           pull(dispID) %>%
           sub(", [A-Za-z ]+", "", .)
       } else {
-        dispID_cur <- substring(input$select_resolution, first = 8)
+        dispID_cur <- substring(cur_res, first = 8)
       }
       fname <- sprintf("%s_%s_forestPlot_%s.png",
                        dispID_cur, input$map_metric,
@@ -1686,7 +1688,10 @@ server <- function(input, output, session) {
 
   output$table_download <- downloadHandler(
     filename = function() {
-      dispID_cur <- dispID_from_res(input$select_resolution)
+      cur_res <- ifelse(input$table_select_resolution == "auto",
+                        loc_info$resolution,
+                        input$table_select_resolution)
+      dispID_cur <- dispID_from_res(cur_res)
       return(sprintf("%s_table_%s.tsv", dispID_cur,
                      format(input$table_date, "%Y-%m-%d")))
     },
