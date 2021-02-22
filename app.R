@@ -766,6 +766,8 @@ ui <- function(req) {
     )
   ),
   dashboardBody(
+    tags$head(tags$link(rel = "shortcut icon", type = "image/png",
+                        href = "covid19logo2.png")),
     tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
     tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 16px}")),
     #tags$head(tags$script(src = "shinyjs_funs.js")),
