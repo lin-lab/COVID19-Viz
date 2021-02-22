@@ -465,13 +465,22 @@ ui <- fluidPage(
           # break up the selection by state, county, and country
           selectizeInput("compare_sel_states", label = "States/Provinces",
                          choices = place_choices$state,
-                         multiple = TRUE),
+                         multiple = TRUE,
+                         options = list('plugins' = list('remove_button'),
+                                      'create' = TRUE,
+                                      'persist' = FALSE)),
           selectizeInput("compare_sel_counties", label = "Counties (US)",
-                         choices = place_choices$county,
-                         multiple = TRUE),
+                         choices = NULL,
+                         multiple = TRUE,
+                         options = list('plugins' = list('remove_button'),
+                                       'create' = TRUE,
+                                       'persist' = FALSE)),
           selectizeInput("compare_sel_countries", label = "Countries",
                          choices = place_choices$country,
-                         multiple = TRUE),
+                         multiple = TRUE,
+                         options = list('plugins' = list('remove_button'),
+                                       'create' = TRUE,
+                                       'persist' = FALSE)),
           actionButton("compare_submit", label = "Submit")
         ),
         mainPanel(
@@ -664,6 +673,10 @@ server <- function(input, output, session) {
   ########################################################################
   ## 2nd tab: Compare Rt
   ########################################################################
+
+  # server side selectize
+  updateSelectizeInput(session, "compare_sel_counties",
+                       choices = place_choices$county, server = TRUE)
 
   # get data to plot for Rt comparison
   plt_dat_compare <- eventReactive(input$compare_submit, {
