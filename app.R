@@ -96,7 +96,7 @@ bins_rt <- c(0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
 bins_cases <- c(0, 50, 100, 250, 500, 750, 1000, Inf)
 bins_deaths <- c(0, 1, 2, 5, 10, 25, 50, Inf)
 colors_rt <- rev(brewer.pal(7, "RdYlBu"))
-colors_rt <- viridis(7)
+#colors_rt <- viridis(7)
 #colors_cases <- brewer.pal(7, "YlOrRd")
 colors_cases <- viridis(7)
 

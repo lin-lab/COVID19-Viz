@@ -3,7 +3,7 @@
 set -euxo pipefail
 
 # set Rscript
-RSCRIPT=/opt/R/4.0.3/bin/Rscript
+RSCRIPT=/opt/R/4.0.4/bin/Rscript
 if [[ ! -f ${RSCRIPT} ]]
 then
     RSCRIPT=/usr/bin/Rscript
