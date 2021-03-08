@@ -595,7 +595,7 @@ heat_map <- function(plt_df_params) {
 #' Actual function that draws the plot.
 compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
                                ci_upr = NULL, color = "dispID", fill = "dispID",
-                               yintercept = NA) {
+                               yintercept = NA, show_ci = FALSE) {
   title_str <- sprintf("Comparison of %s", metric_str)
   plt <- ggplot(dt, aes_string(x = x, y = y, color = color)) +
     geom_line() + geom_point() +
@@ -615,7 +615,7 @@ compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
 
   plt <- plt + coord_cartesian(ylim = c(0, max_value_plt))
 
-  if (!is.null(ci_lwr)) {
+  if (!is.null(ci_lwr) && show_ci) {
     stopifnot(!is.null(ci_upr))
     plt <- plt +
       geom_ribbon(aes_string(ymin = ci_lwr, ymax = ci_upr, fill = fill),
@@ -637,7 +637,8 @@ compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
 #' Draw the comparison plots.
 #'
 #' Set up plotting arguments and return a list of plots
-compare_plot <- function(dt, metric_lst) {
+compare_plot <- function(dt, metric_lst, show_ci = c("Yes", "No")) {
+  show_ci <- match.arg(show_ci)
   stopifnot(all(metric_lst %in% colnames(dt)))
   xlim_max <- max(dt$date)
   xlim_min <- min(dt$date_lag)
@@ -666,7 +667,8 @@ compare_plot <- function(dt, metric_lst) {
       "death" = "Total Deaths",
       "metric")
 
-    call_lst <- c(list(dt = dt), plt_params)
+    show_ci_bool <- identical(show_ci, "Yes")
+    call_lst <- c(list(dt = dt, show_ci = show_ci_bool), plt_params)
     plt_lst[[met]] <- do.call(compare_plt_helper, call_lst) +
         xlim(xlim_min, xlim_max)
   }
@@ -883,6 +885,8 @@ ui <- function(req) {
                              options = list('plugins' = list('remove_button'),
                                             'create' = TRUE,
                                             'persist' = FALSE)),
+              radioButtons("show_ci", label = "Show Confidence Interval?",
+                           choices = c("Yes", "No"), selected = "No"),
               checkboxGroupInput("compare_metric",
                                  label = "Select metrics to compare",
                                  choices = list("Rt" = "rt",
@@ -1564,6 +1568,7 @@ server <- function(input, output, session) {
     shinyjs::reset("compare_sel_counties")
     shinyjs::reset("compare_sel_countries")
     shinyjs::reset("compare_metric")
+    shinyjs::reset("show_ci")
   })
 
   # reactive thingy to draw the plot
@@ -1576,7 +1581,8 @@ server <- function(input, output, session) {
     # handled by compare_plt_data() when user hits submit.
     metric_lst_touse <- isolate(input$compare_metric)
 
-    plt_lst <- compare_plot(cur_dat, metric_lst = metric_lst_touse)
+    plt_lst <- compare_plot(cur_dat, metric_lst = metric_lst_touse,
+                            show_ci = input$show_ci)
     suppressWarnings(
       plot_grid(plotlist = plt_lst, ncol = 1, align = "v", axis = "l")
     )
