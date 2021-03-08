@@ -762,7 +762,7 @@ ui <- function(req) {
     # here and also add a new tabItem below.
     sidebarMenu(
       menuItem("Map", tabName = "Map"),
-      menuItem("Compare Rt", tabName = "compare_rt"),
+      menuItem("Compare", tabName = "compare_rt"),
       menuItem("Table", tabName = "table"),
       menuItem("About", tabName = "about")
     )
