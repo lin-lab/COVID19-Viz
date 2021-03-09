@@ -2,7 +2,7 @@ The Rt, case rate, and death rate might also not be shown for certain locations
 and certain dates if that location had too few total cases or too few new cases
 on that date. Occasionally, locations may have negative values for new cases or
 new deaths because of reporting issues. Full table available for download [on
-Github](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data).
+Github](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data_pois).
 
 ## Table Column Explanations
 
