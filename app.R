@@ -605,7 +605,7 @@ compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15))
 
-  if (!is.null(ci_upr) &&
+  if (show_ci && !is.null(ci_upr) &&
       !all(is.na(dt[[ci_upr]])) &&
       isTRUE(max(dt[[ci_upr]], na.rm = TRUE) > max_value)) {
     max_value_plt <- max_value
@@ -1598,6 +1598,7 @@ server <- function(input, output, session) {
     # need to take a dependency on compare_plt_data to trigger UI re-draw on
     # submit
     cur_dat <- compare_plt_data()
+    input$show_ci
     metric_lst <- isolate(input$compare_metric)
     n_metrics <- length(metric_lst)
     plt_height <- max(1, n_metrics)
