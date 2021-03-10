@@ -1,127 +1,89 @@
-Website Usage
--------------
+## Website Usage
 
-**Rt map tab**: This tab shows a map of the Rt by date for various
-resolutions. Change the date by adjusting the slider. Click the blue
-"play" button under the slider to animate Rt over time. Change the
-resolution (Country, US states, US counties, Canadian/Chinese/Australian
-provinces) using the resolution dropdown menu, and click on a location
-to see a line graph of the Rt over time and of the number of daily new
-cases over time. You can scroll to change the zoom of the map and
-click-drag to move the map around.
+**Map tab**: This tab shows a map of the Rt, case rate, or death rate by date
+for various resolutions. Change the date by clicking on the displayed date and
+using the calendar. Change the geographic resolution (country, states /
+subnational, US states' counties) using the resolution dropdown menu, and click
+on a location on the map to see a line graph of the Rt, case rate, and death
+rate over time. In this plot, the dotted line shows the observed number of new
+cases or deaths per day, while the solid line and gray band shows the calculated
+Rt, case rate, or death rate along with a 95% confidence interval. You can
+scroll to change the zoom of the map and click-drag to move the map around.
+Locations where Rt, case rate, or death rate could not be calculated are shown
+as gray in the map (see Limitations for more info).
 
-Below the map, there is a table of Rts for the chosen date and
-resolution, as well as the number of new cases, new case rate,
-cumulative number of cases, number of new deaths, new death rate, and
-cumulative number of deaths . This table is by default sorted in
-descending order of Rt, but the sorting can be changed by clicking a
-column header. Locations where Rt could not be calculated are colored
-gray in the map and not shown in the table (see Limitations for more
+By clicking "Show More", a heatmap and forest plot will be displayed. The
+heatmap shows the values of the selected metric as colored blocks over time in
+the selected geographic resolution. The forest plot shows the estimated value
+(as a point) and 95% confidence interval (as a bar) of the selected metric on
+the selected day. Locations where the metric could not be calculated are shown
+as gray in the heatmap and not shown in the forest plot (see Limitations for
+more info).
+
+**Compare tab**: Select states / provinces / subnational units, US counties,
+and countries to compare their Rt over time. You can select a location by using
+the dropdown menu. You can also type the name of the location. Multiple
+locations for each category (states, counties, and countries) can be chosen.
+Additionally, choose which metrics to display and toggle display of the
+confidence interval for the Rt, case rate, and death rate. After you click
+submit, the results will be displayed as a series of line plots. Some areas may
+not appear in the plot because of insufficient data (see Limitations for more
 info).
 
-Technical note: the blue line is a fitted loess curve to the Rt points,
-and the error bars show the 95% credible interval of Rt for that time
-point.
-
-**Compare Rt tab**: Select states/provinces, US counties, and countries
-to compare their Rt over time. You can select a location by using the
-dropdown menu. You can also type the name of the location. Multiple
-locations for each category (states/provinces, counties, and countries)
-can be chosen. After you click submit, the results will be displayed as
-a line plot. Some areas may not appear in the plot because of
-insufficient data (see Limitations for more info).
-
-**Forest Plot tab**: This tab shows a forest plot comparing the sorted
-Rt values of all the countries, all the US states and all the provinces
-of a few other countries on a given day. The estimated value of Rt is
-shown as a point, and the error bars give a 95% credible interval.
-Change the resolution (Country, US states, US counties,
-Canadian/Chinese/Australian provinces) using the resolution dropdown
-menu. Locations where Rt could not be calculated are not shown (see
+**Table tab**: This tab shows a table of Rts for the chosen date and resolution,
+as well as the number of new cases, new case rate, cumulative number of cases,
+number of new deaths, new death rate, and cumulative number of deaths. The
+columns displayed in the table can be changed by clicking the dialog box under
+"Select Columns for Table". Click the "Reset Columns" button to reset the
+columns to the default configuration, and click the "Download Table" button to
+download the table as a csv file. This table is by default sorted in descending
+order of case rate, but the sorting can be changed by clicking a column header.
+Locations where Rt could not be calculated are not shown in the table (see
 Limitations for more info).
-
-**Explore States tab**: This tab shows an overview for all the counties
-in a selected US state. The map on the top right shows the Rt for the
-counties in the state for a selected date. Clicking a county will
-generate a plot of Rt and number of daily new cases over time on the top
-left. The plot on the second row on the left left shows the change in Rt
-over time for counties where Rt was able to be calculated, and the plot
-on the right shows a forest plot for the counties in the selected state.
-The date can be adjusted using the slider, and an animation can be shown
-by clicking the blue "play" button. You can zoom by scrolling and move
-the map by clicking and dragging. Below the plots, there is a table of
-Rt for the date selected using the slider. This table is by default
-sorted in descending order of Rt, but the sorting can be changed by
-clicking a column header.
 
 ### Downloading Plots / Maps / Rt
 
-To download a plot, you can right-click on it and select "Save Image
-As..." Then you'll be able to save the plot to your computer. Right now
-we do not have a way to save a map, but in the meantime you can take a
-screenshot. To download the Rt values, case or death counts, and other
-information shown in the tables, please see the [Rt table CSV on our
-Github
-page](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data/).
+To download a plot, you can use the Download buttons, or alternatively
+right-click on a plot and select "Save Image As..." Right now we do not have a
+way to save a map, but in the meantime you can take a screenshot. To download
+the information shown in the tables, please see the [Rt table CSV on our Github
+page](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data_pois/) or
+use the Table tab.
 
-If you'd like the shapefiles with Rt information merged that we used for
+If you'd like the shapefiles with metrics information merged that we used for
 our maps, they are saved as an RDS file on our
-[Github](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data/sf_all.rds).
+[Github](https://github.com/lin-lab/COVID19-Viz/blob/master/clean_data_pois/sf_all.rds).
 
-Rt Method Description
----------------------
+## Method Description
 
-We calculate and report the daily effective reproduction number (Rt) to
-characterize COVID-19 spread rate, defined as the expected number of
-secondary infectious cases produced by a primary infectious case. Rt is
-used to determine the potential for epidemic spread at a specific time t
-under the control measures in place (Figure 1, [Inglesby, T.V.,
-2020](https://doi.org/10.1001/jama.2020.7878), reproduced below). If Rt
-\> 1, the virus will spread out and the disease will become an epidemic;
-if Rt = 1, the virus will spread locally and the disease is endemic; if
-Rt \< 1, the virus will stop spreading and the disease will disappear
-eventually.
+We calculate and report the daily effective reproduction number (Rt), case rate,
+and death rate to characterize the COVID-19 spread rate. The Rt is defined as
+the expected number of secondary infectious cases produced by a primary
+infectious case. Rt is used to determine the potential for epidemic spread at a
+specific time t under the control measures in place (Figure 1, [Inglesby, T.V.,
+2020](https://doi.org/10.1001/jama.2020.7878), reproduced below). If Rt \> 1,
+the virus will spread out and the disease will become an epidemic; if Rt = 1,
+the virus will spread locally and the disease is endemic; if Rt \< 1, the virus
+will stop spreading and the disease will disappear eventually.
 
 <img src="Rt_explanation.png" alt="Figure 1: Explanation of Rt", width="800"/>
 
 Figure credit: Thomas V. Inglesby, MD ([Inglesby, T.V.,
 2020](https://doi.org/10.1001/jama.2020.7878))
 
-To obtain the Rt estimate, different methods could be considered ([Cori,
-A., et al., 2013](https://doi.org/10.1093/aje/kwt133); [Thompson, R.N.,
-et al., 2019](https://doi.org/10.1016/j.epidem.2019.100356); [Walllinga,
-J. and Teunis, P., 2004](https://doi.org/10.1093/aje/kwh255); [Zhang,
-J., et al., 2020](https://doi.org/10.1016/S1473-3099%2820%2930230-9)).
-Here we used the EpiEstim method (Cori, A., et al., 2013; Thompson,
-R.N., et al., 2019) to estimate the daily Rt value, as implemented in
-the [EpiEstim R package](https://cran.r-project.org/package=EpiEstim). The
-EpiEstim method requires the following inputs (and outputs the daily Rt
-estimates):
+We developed a method based on Poisson log-linear models to estimate the Rt,
+case rate, and death rate. Briefly, we can model the expected number of new
+cases per day as Rt times the infectivity potential, which is a weighted sum of
+cases in the previous days. We can use a Poisson or negative binomial
+generalized linear model (GLM) to model Rt as a function of covariates.
+Specifically, we model Rt as a B-spline of time to smooth out weekly trends in
+reporting. Using the estimated coefficients and standard errors from the GLM, we
+can obtain estimates and confidence intervals for Rt. This method can be
+extended to calculate the case rate and death rate by modeling the expected
+number of new cases or deaths per day as the case or death rate times the
+population.
 
--   Daily positive increase cases: we used data from Johns Hopkins
-    University Center for Systems Science and Engineering (JHU-CSSE)
-    [Coronavirus Resource
-    Center](https://github.com/CSSEGISandData/COVID-19) ([Dong, E., et
-    al, 2020](https://doi.org/10.1016/S1473-3099%2820%2930120-1)).
-
--   The time window of daily positive increase cases to be averaged (to
-    smooth out the discreteness due to reporting). For our analysis, a 7-day
-    window was used by default.
-
--   The input parameter values of the distribution of the disease serial
-    interval: We used a Gamma distribution with a mean of 5.2 days and a
-    standard deviation of 5.1 days ([He, X., et al,
-    2020](https://doi.org/10.1038/s41591-020-0869-5)).
-
-We are performing sensitivity analyses using different methods
-(Walllinga, J. and Teunis, P., 2004; Zhang, J., et al., 2020) to
-evaluate the robustness of Rt estimates obtained from EpiEstim and Rt
-estimation methods.
-
-We estimated Rt for each day since March 19, 2020 for each country in
-the JHU dataset. We also provide state/province level daily Rt estimates
-for the US, Australia, Canada, and China, as well as county-level daily
-Rt estimates for the US.
+For a full description of our method, please see [our paper]().
 
 ### Rt Lag Adjustment
 
@@ -129,65 +91,63 @@ Because the number of reported cases on a particular day does not
 represent the number of people who contracted COVID-19 on that day, the
 Rt curve needs to be adjusted to account for the fact that people
 contract COVID-19 before their case gets counted. As a heuristic, we
-assume that there is a 5-day lag from the time a person contracts
+assume that there is a 7-day lag from the time a person contracts
 COVID-19 until they are reported as a case, so we shift the Rt curve
 back 5 days to reflect this. This assumes an average incubation period
-of 5 days, which includes an average latent period of 3 days and an
-average presymptomatic period 2 days (He, X., et al, 2020). Subjects are
-infectious during the presymptomatic period and are likely to test
-positive. This assumption also considers that with the increasing
-testing capacity, more presymptomatic and asymptomatic subjects are
-being tested. The length of delay is likely to vary between individuals,
-regions, and over time. See the Limitation section for further
-discussion.
+of 7 days, which includes an average latent period of 3 days and an average
+presymptomatic period 2 days (He, X., et al, 2020), plus 2 days of testing
+delay. Subjects are infectious during the presymptomatic period and are likely
+to test positive. This assumption also considers that with the increasing
+testing capacity, more presymptomatic and asymptomatic subjects are being
+tested. The length of delay is likely to vary between individuals, regions, and
+over time. See the Limitation section for further discussion.
 
 ### Limitations
 
-Rt estimation becomes unstable when there are only a few new cases per
-day, when there is a large spike in cases in a single day or when the
-total number of cases is small. We calculate Rt at the county level for
-the US, and counties can have populations from the thousands to the
-millions. Because of low population size or lack of testing or
-reporting, many counties in the US as well as many countries with
-underdeveloped healthcare infrastructure may not have many cases.
-Therefore, we do not show the Rt value on dates when the number of total
-cases is below 50 or when the average number of new cases within the
-previous 7 days is below 10. We also provide Rt at different resolutions
-so we can aggregate data from areas with few cases.
+Rt, case rate, and death rate estimation becomes unstable when there are only a
+few new cases per day, when there is a large spike in cases in a single day or
+when the total number of cases is small. We calculate Rt at the county level for
+the US, and counties can have populations from the thousands to the millions.
+Because of low population size or lack of testing or reporting, many counties in
+the US as well as many countries with underdeveloped healthcare infrastructure
+may not have many cases. Therefore, we do not show the Rt value on dates when
+the number of total cases is below 50 or when the average number of new cases
+within the previous 7 days is below 10; we do not show the case rate or death
+rate values when the number of total cases or deaths is below 50 or when the
+average number of new cases or deaths in the previous 7 days is below 1. We also
+provide these metrics at different resolutions so we can aggregate data from
+areas with few cases or deaths.
 
-Our calculation of Rt is dependent on the number of reported daily new
-cases. We use the number of reported cases as a proxy for the number of
-actual cases. In some instances, the number of reported cases is likely
-to be lower than the number of actual cases because of reporting issues
-or lack of COVID-19 testing. In other instances, local authorities may
-report cases from several days on the same day; for example, they may
-not report many cases on weekends but report many on Mondays. The
-reported cases in some regions include cases using both PCR and antibody
-tests, where PCR tests detect incidence cases (currently infected cases)
-and antibody tests detect prevalence cases (previously infected cases).
-Including both may result in double counting. These data issues can
-cause bias in Rt point estimates and credible interval estimates.
-Therefore, we need to be cautious about interpreting the Rt for any
-particular region and time and take into account how reliable the case
-numbers are.
+Our calculation of these metrics is dependent on the number of reported daily
+new cases. We use the number of reported cases as a proxy for the number of
+actual cases. In some instances, the number of reported cases is likely to be
+lower than the number of actual cases because of reporting issues or lack of
+COVID-19 testing. In other instances, local authorities may report cases from
+several days on the same day; for example, they may not report many cases on
+weekends but report many on Mondays. The reported cases in some regions include
+cases using both PCR and antibody tests, where PCR tests detect incidence cases
+(currently infected cases) and antibody tests detect prevalence cases
+(previously infected cases). Including both may result in double counting. These
+data issues can cause bias in point estimates and confidence interval estimates.
+Therefore, we need to be cautious about interpreting these metrics for any
+particular region and time and take into account how reliable the case numbers
+are.
 
-The metric Rt is defined at the time of infection and estimated using
-daily reported cases using the EpiEstim method (Cori, et al, 2013). This
-method makes several assumptions including serial interval parameters,
-length of case reporting delay, and constant ascertainment rate over
-time. The length of case reporting delay is likely to vary between
-subjects, regions and over time. Rts are estimated assuming the model is
-correctly specified. If the model is misspecified, the Rt estimates and
-the credible interval estimates may be biased. One can perform a
-tailored analysis by modifying model assumptions so they can be more
-suitable for a given region and a given time interval. For example, if a
-region has a longer length of reporting delay, the lag adjustment of Rt
-should be increased. Sensitivity analysis is valuable to examine the
-robustness of model assumptions. Future research is needed to develop
-advanced methods to address these limitations.
+The metric Rt is defined at the time of infection and estimated using daily
+reported cases using our modification of EpiEstim model (Cori, et al, 2013).
+This model makes several assumptions including serial interval parameters,
+length of case reporting delay, and constant ascertainment rate over time. The
+length of case reporting delay is likely to vary between subjects, regions and
+over time. Rts, case rates, and death rates are estimated assuming the model is
+correctly specified. If the model is misspecified, the estimates and the
+confidence interval estimates may be biased. One can perform a tailored analysis
+by modifying model assumptions so they can be more suitable for a given region
+and a given time interval. For example, if a region has a longer length of
+reporting delay, the lag adjustment of Rt should be increased. Sensitivity
+analysis is valuable to examine the robustness of model assumptions. Future
+research is needed to develop advanced methods to address these limitations.
 
-Rt Interpretation, Using Rt to Guide Reopening, and the Need for Multiple Metrics
----------------------------------------------------------------------------------
+## Interpretation, Using Metrics to Guide Reopening, and the Need for Multiple Metrics
 
 Rt should not be used in isolation, and should be used as one of several
 metrics, such as case rate and death rate, to measure the extent of the
@@ -252,8 +212,7 @@ test-trace-isolate ([Hao et al,
 Carefully planned multi-phased reopening with close monitoring of new cases
 would be desirable.
 
-In the News
------------
+## In the News
 
 - [Nature News Feature](https://www.nature.com/articles/d41586-020-02009-w): A
   Guide to R---the pandemic's misunderstood metric.
@@ -273,8 +232,7 @@ width="800"/></a>
 >public-health officials to identify hot spots of infection to prioritize
 >resources such as testing, she says.
 
-Code Availability
------------------
+## Citation and Code Availability
 
 - Website code: <https://github.com/lin-lab/COVID19-Viz>
 
@@ -285,8 +243,15 @@ Code Availability
 - Rt Calculation code: <https://github.com/lin-lab/COVID19-Rt>. This is the code
   we used to calculate the Rt values.
 
-Credits
--------
++ Our code is licensed under GPL-3.
+
++ If you'd like to use our code, data, or plots, please cite [our paper]():
+
+Shi, A.\*, Gaynor, S\*. M., Quick, C. & Lin, X. Multi-resolution
+characterization of the COVID-19 pandemic: A unified framework and open-source
+tool. *In submission*.
+
+## Credits
 
 This website and the associated Rt analysis was developed by [Xihong
 Lin's Group](https://content.sph.harvard.edu/xlin/) in the [Department
@@ -305,8 +270,7 @@ of Biostatistics](https://www.hsph.harvard.edu/biostatistics/) at the
   Quantitative Social Science (IQSS)](https://www.iq.harvard.edu/) for help with
   hosting.
 
-Contact Us
-----------
+## Contact Us
 
 - If you have a question or feedback about the website, please write to us at
   `linlab.covid19.analysis@gmail.com`.
@@ -317,8 +281,7 @@ Contact Us
 - If you have a bug fix or new feature to add, please create a pull request on
   Github.
 
-References
-----------
+## References
 
 1.  Inglesby, T.V., 2020. Public health measures and the reproduction
     number of SARS-CoV-2. *JAMA*, 323(21), pp.2186-2187. doi:
