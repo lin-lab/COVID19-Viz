@@ -12,8 +12,11 @@ library(rnaturalearth)
 library(rgeos)
 library(purrr)
 library(ggplot2)
+library(stringi)
 
+START_DATE <- ymd("2020-04-01")
 
+<<<<<<< HEAD
 #' Calculate loess curve for Rt by date_lag.
 Rt_loess <- function(dat) {
   if (nrow(dat) < 3) {
@@ -72,67 +75,77 @@ lag_subset_mod <- function(dt, group_var = "UID", nlag = 7,
                                   align = "right", algo = "exact"),
       by = group_var]
   dt[, positive_percapita := 1e6 * positive/ population]
+=======
+reformat_data <- function(dt, start_date) {
+  scale_cols <- c("case_rate", "case_lower", "case_upper", "death_rate",
+                  "death_lower", "death_upper")
+  dt[, (scale_cols) := lapply(.SD, function(x) { x * 1e6 }),
+     .SDcols = scale_cols]
+  dt[, positive_percapita := 1e6 * positive / population]
+>>>>>>> dev
   dt[, death_percapita := 1e6 * death / population]
-  dt[, positiveIncr_percapita := 1e6 * positiveIncrease / population]
-  dt[, deathIncr_percapita := 1e6 * deathIncrease / population]
-
-  dt_subset <- dt[date >= start_date & date <= end_date & !is.na(rolling_posIncr)]
-  dt_subset[positive >= pos_cutoff & rolling_posIncr >= posincr_cutoff,
-      `:=` (Rt_plot = mean_rt, Rt_upr = ci_upper, Rt_lwr = ci_lower)]
-  dt_subset[positive >= pos_cutoff & rolling_posIncr < posincr_cutoff,
-      Rt_plot := -88]
-  dt_subset[positive < pos_cutoff, Rt_plot := -888]
-  dt_subset[, rowid := rep(1:.N)]
-
-  loess_dt <- dt_subset[Rt_plot > 0, Rt_loess(.SD), by = group_var]
-  ret <- merge(dt_subset,
-               loess_dt[, .(Rt_loess_fit, Rt_loess_lwr, Rt_loess_upr, rowid)] ,
-               by = "rowid", all.x = TRUE, all.y = FALSE)
-  ret[, rowid := NULL]
-
+  dt[, positiveIncrease_percapita := 1e6 * positiveIncrease / population]
+  dt[, deathIncrease_percapita := 1e6 * deathIncrease / population]
+  ret <- dt[date >= start_date]
   return(ret)
 }
 
-#end_date <- ymd("2020-06-06")
-end_date <- today()
 
 ########################################################################
 ## State-level data
 ########################################################################
 
-state_rt_long_orig <- read_tsv("raw_data/jhu_state_rt.tsv") %>%
-  data.table()
+state_cols <- cols(
+  UID = col_double(),
+  stateName = col_character(),
+  date = col_date(format = "%Y-%m-%d"),
+  positiveIncrease = col_double(),
+  deathIncrease = col_double(),
+  positive = col_double(),
+  death = col_double(),
+  population = col_double(),
+  Lat = col_double(),
+  Long_ = col_double(),
+  Combined_Key = col_character(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
 
-state_rt_long <- lag_subset_mod(state_rt_long_orig, "stateName",
-                                end_date = end_date)
 
-state_rt_long[date >= end_date - ddays(2),
-              .(stateName, positive, population, positive_percapita)][
-              order(positive_percapita, decreasing = TRUE)]
-
-
-# check that we calculated the rolling mean correctly
-state_check <- state_rt_long[stateName == "New Jersey", ]
-stopifnot(all.equal(state_check$rolling_posIncr[7],
-                    mean(state_check$posIncr_trunc[1:7])))
-stopifnot(all.equal(state_check$rolling_posIncr[8],
-                    mean(state_check$posIncr_trunc[2:8])))
-stopifnot(all.equal(state_check$rolling_posIncr[10],
-                    mean(state_check$posIncr_trunc[4:10])))
+state_rt_long <- read_csv("raw_data/jhu_state_rt_case_death_rate.csv",
+                          col_types = state_cols) %>%
+  data.table() %>%
+  reformat_data(START_DATE)
 
 # make wide format
 state_rt_tomerge <- state_rt_long %>%
-  select(stateName, date_lag, Rt_plot, Rt_upr, Rt_lwr) %>%
-  pivot_wider(id_cols = c(stateName), names_from = date_lag,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr))
+  select(UID, stateName, date, starts_with("rt"), starts_with("case_"),
+         starts_with("death_")) %>%
+  pivot_wider(id_cols = c(UID, stateName), names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_")))
 
 state_maps <- ne_states(country = "united states of america",
                         returnclass = "sf")
+# for JHU, Puerto Rico's UIDs start with 630
+
+pr_maps <- us_counties() %>%
+  filter(state_name == "Puerto Rico") %>%
+  st_union() %>%
+  st_sf() %>%
+  mutate(name = "Puerto Rico", UID = 630)
 
 # Add points for American Samoa, Guam, Puerto Rico, etc
-sort(state_maps$name)
 jhu_states <- state_rt_tomerge$stateName
-add_states <- dplyr::setdiff(jhu_states, state_maps$name)
+add_states <- dplyr::setdiff(jhu_states, c(state_maps$name, "Puerto Rico"))
 print(add_states)
 
 unjoined_states <- state_rt_long %>%
@@ -144,7 +157,7 @@ unjoined_states <- state_rt_long %>%
 #'
 make_points <- function(df, name_col, crs) {
   point_lst <- list()
-  for (i in 1:nrow(df)) {
+  for (i in seq_len(nrow(df))) {
     long_cur <- df$Long_[i]
     lat_cur <- df$Lat[i]
     point_lst[[i]] <- st_point(c(long_cur, lat_cur))
@@ -156,38 +169,63 @@ make_points <- function(df, name_col, crs) {
   return(new_points)
 }
 
-new_state_points <- make_points(unjoined_states, "stateName", st_crs(state_maps))
+new_state_points <- make_points(unjoined_states, "stateName",
+                                st_crs(state_maps))
 
 state_merged <- state_maps %>%
   select(name, geometry, fips) %>%
   mutate(UID = as.integer(paste0("840000", substring(fips, 3)))) %>%
   select(-fips) %>%
-  rbind(new_state_points) %>%
-  merge(state_rt_tomerge, by.x = "name", by.y = "stateName", all.x = FALSE) %>%
-  mutate(resolution = "state_USA", dispID = paste0(name, ", USA")) %>%
-  select(UID, dispID, resolution, starts_with("Rt_"))
+  rbind(pr_maps, new_state_points) %>%
+  merge(state_rt_tomerge, by = "UID", all.x = FALSE) %>%
+  mutate(resolution = "subnat_USA", dispID = paste0(name, ", USA")) %>%
+  select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
+         starts_with("death_"))
 
-exported_states <-
-  with(state_merged,
-       data.table(UID = UID, stateName = substr(dispID, 1, nchar(dispID) - 5)))
-state_rt_long_export <- state_rt_long[exported_states, on = "stateName"] %>%
-  mutate(resolution = "state_USA",
-         dispID = paste0(stateName, ", USA")) %>%
-  select(UID, dispID, date, resolution, date_lag,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+exported_states <- with(state_merged, data.table(UID = UID))
+state_rt_long_export <- state_rt_long[exported_states, on = "UID"][,
+    resolution := "subnat_USA"]
+setnames(state_rt_long_export, old = "Combined_Key", new = "dispID")
+# drop unneeded columns
+state_rt_long_export[, `:=` (Lat = NULL, Long_ = NULL, stateName = NULL)]
 
 ########################################################################
 ## County-level data
 ########################################################################
 
+# for JHU, Puerto Rico's UIDs start with 630
 county_maps <- us_counties() %>%
-  mutate(UID = as.integer(paste0("840", geoid)))
-county_rt_long_orig <- read_tsv("raw_data/jhu_county_rt.tsv",
-                                guess_max = 10000) %>%
-  data.table()
+  mutate(UID = case_when(state_name == "Puerto Rico" ~ as.integer(paste0("630", geoid)),
+                         TRUE ~ as.integer(paste0("840", geoid))))
 
-county_rt_long <- lag_subset_mod(county_rt_long_orig, end_date = end_date)
-stopifnot(all(county_rt_long$Rt_upr >= county_rt_long$Rt_lwr, na.rm = TRUE))
+county_cols <- cols(
+  UID = col_double(),
+  county = col_character(),
+  stateName = col_character(),
+  date = col_date(format = "%Y-%m-%d"),
+  FIPS = col_double(),
+  positiveIncrease = col_integer(),
+  deathIncrease = col_integer(),
+  positive = col_integer(),
+  death = col_double(),
+  population = col_double(),
+  Combined_Key = col_character(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+county_rt_long <- read_csv("raw_data/jhu_county_rt_case_death_rate.csv",
+                           col_types = county_cols) %>%
+  data.table() %>%
+  reformat_data(START_DATE)
 
 # make combined key for county rt long
 county_rt_long[, Combined_Key := paste(county, stateName, sep = ", ")]
@@ -274,11 +312,12 @@ county_rt_long <- county_rt_long[!(county %in% utah_counties_remove &
                                    stateName == "Utah")]
 
 county_rt_wide <- county_rt_long %>%
-  select(county, stateName, UID, FIPS, date_lag, Rt_plot, Rt_upr, Rt_lwr,
-         Combined_Key) %>%
+  select(county, stateName, UID, FIPS, date, starts_with("rt"),
+         starts_with("case_"), starts_with("death_"), Combined_Key) %>%
   pivot_wider(id_cols = c(county, stateName, UID, FIPS, Combined_Key),
-              names_from = date_lag,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr))
+              names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_")))
 
 county_maps_new <- county_maps %>%
   select(UID, geometry) %>%
@@ -297,35 +336,71 @@ county_merged <- county_maps_new %>%
   mutate(resolution = "county") %>%
   merge(county_rt_wide, by = "UID", all = FALSE) %>%
   select(-county, -stateName, -FIPS) %>%
-  select(UID, dispID = Combined_Key, resolution, starts_with("Rt_"))
+  select(UID, dispID = Combined_Key, resolution, starts_with("rt"),
+         starts_with("case_"), starts_with("death_"))
 
 exported_counties <- data.table(UID = county_merged$UID)
-county_rt_long_export <- county_rt_long[exported_counties, on = "UID"] %>%
-  mutate(resolution = "county") %>%
-  select(UID, dispID = Combined_Key, date, date_lag, resolution,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+county_rt_long_export <- county_rt_long[exported_counties, on = "UID"]
+county_rt_long_export[, resolution := "county"]
+# drop unneeded columns
+county_rt_long_export[, `:=` (FIPS = NULL, stateName = NULL, county = NULL)]
+setnames(county_rt_long_export, old = "Combined_Key", new = "dispID")
 
 ########################################################################
 ## International data
 ########################################################################
 
-global_rt_long_orig <- fread("raw_data/jhu_global_rt.tsv", fill = TRUE)
-global_rt_long_orig[Country_Region == "Canada",]
-global_rt_long_orig[, date := ymd(date)]
+global_cols <- cols(
+  UID = col_double(),
+  Province_State = col_character(),
+  Country_Region = col_character(),
+  positive = col_integer(),
+  date = col_date(format = "%Y-%m-%d"),
+  death = col_integer(),
+  positiveIncrease = col_integer(),
+  deathIncrease = col_integer(),
+  iso2 = col_character(),
+  iso3 = col_character(),
+  code3 = col_double(),
+  FIPS = col_integer(),
+  Admin2 = col_character(),
+  Lat = col_double(),
+  Long_ = col_double(),
+  Combined_Key = col_character(),
+  population = col_double(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+global_rt_long <- read_csv("raw_data/jhu_global_rt_case_death_rate.csv",
+                           col_types = global_cols) %>%
+  data.table() %>%
+  reformat_data(START_DATE)
+
+global_rt_long[UID == 840, Country_Region := "United States"]
+global_rt_long[UID == 840, Combined_Key := "United States"]
+
+global_rt_long[Country_Region == "Canada", ]
 
 # fix a typo
-global_rt_long_orig[UID == 12406,
-                    Combined_Key := "Northwest Territories, Canada"]
-
-global_rt_long <- lag_subset_mod(global_rt_long_orig, end_date = end_date)
-stopifnot(all(global_rt_long$Rt_upr >= global_rt_long$Rt_lwr, na.rm = TRUE))
+global_rt_long[UID == 12406,
+               Combined_Key := "Northwest Territories, Canada"]
 
 global_rt_wide <- global_rt_long %>%
-  select(-population, -interval_start, -FIPS, -Admin2, -positiveIncrease,
-         -deathIncrease, -positive, -positiveIncrease, -death) %>%
-  pivot_wider(id_cols = c(UID, Province_State:Combined_Key),
-              names_from = date_lag,
-              values_from = c(Rt_plot, Rt_upr, Rt_lwr)) %>%
+  select(UID, Province_State, Country_Region, Lat, Long_, Combined_Key, date,
+         starts_with("rt"), starts_with("case_"), starts_with("death_")) %>%
+  pivot_wider(id_cols = UID:Combined_Key,
+              names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_"))) %>%
   data.table()
 stopifnot(uniqueN(global_rt_wide$UID) == nrow(global_rt_wide))
 
@@ -333,7 +408,7 @@ stopifnot(uniqueN(global_rt_wide$UID) == nrow(global_rt_wide))
 ## Take care of provinces
 ########################################################################
 countries_w_provinces <- c("Canada", "Australia", "China")
-province_uids <- global_rt_wide[!is.na(Province_State) &
+province_uids <- global_rt_wide[Province_State != "" &
                                  Country_Region %in% countries_w_provinces,
                                 UID]
 
@@ -345,7 +420,7 @@ provinces_sf_orig <- ne_states(geounit = c("Canada", "Australia", "China"),
 x <- provinces_sf_orig %>%
   filter(admin == "China")
 x$name_en
-x[19,]
+x[19, ]
 sort(x$name_en)
 
 x <- provinces_sf_orig %>%
@@ -399,20 +474,241 @@ provinces_merged <- provinces_sf_final %>%
   select(UID, geometry) %>%
   merge(provinces_wide, by = "UID", all = FALSE) %>%
   rename(dispID = Combined_Key) %>%
-  mutate(resolution = case_when(
-    Country_Region == "Canada" ~ "state_Canada",
-    Country_Region == "China" ~ "state_China",
-    Country_Region == "Australia" ~ "state_Australia")) %>%
-  select(UID, dispID, resolution, starts_with("Rt_"))
+  mutate(resolution = paste0("subnat_", Country_Region)) %>%
+  select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
+         starts_with("death_"))
 
 exported_provinces <- data.table(UID = provinces_merged$UID)
 provinces_rt_long_export <- global_rt_long[exported_provinces, on = "UID"] %>%
-  mutate(resolution = case_when(
-    Country_Region == "Canada" ~ "state_Canada",
-    Country_Region == "China" ~ "state_China",
-    Country_Region == "Australia" ~ "state_Australia")) %>%
-  select(UID, dispID = Combined_Key, date, date_lag, resolution,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+  mutate(resolution = paste0("subnat_", Country_Region)) %>%
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
+         starts_with("rt"), starts_with("positive"), starts_with("death"),
+         starts_with("case")) %>%
+  data.table()
+
+########################################################################
+## Additional subnational data
+########################################################################
+subnat_cols <- cols(
+  UID = col_integer(),
+  positive = col_integer(),
+  death = col_integer(),
+  date = col_date(format = "%Y-%m-%d"),
+  Combined_Key = col_character(),
+  iso2 = col_character(),
+  iso3 = col_character(),
+  code3 = col_double(),
+  FIPS = col_logical(),
+  Admin2 = col_logical(),
+  Province_State = col_character(),
+  Country_Region = col_character(),
+  Lat = col_double(),
+  Long_ = col_double(),
+  population = col_integer(),
+  deathIncrease = col_integer(),
+  positiveIncrease = col_integer(),
+  rt = col_double(),
+  rt_lower = col_double(),
+  rt_upper = col_double(),
+  case_rate = col_double(),
+  case_lower = col_double(),
+  case_upper = col_double(),
+  death_rate = col_double(),
+  death_lower = col_double(),
+  death_upper = col_double(),
+  date_lag = col_date(format = "%Y-%m-%d")
+)
+
+subnat_rt_long <- read_csv("raw_data/jhu_subnational_rt_case_death_rate.csv",
+                           col_types = subnat_cols) %>%
+  # some plcae was duplicated a lot on a single day
+  distinct() %>%
+  data.table() %>%
+  reformat_data(START_DATE)
+
+stopifnot(identical(anyDuplicated(subnat_rt_long), 0L))
+
+subnat_rt_wide <- subnat_rt_long %>%
+  select(UID, Province_State, Country_Region, Lat, Long_, Combined_Key, date,
+         starts_with("rt"), starts_with("case_"), starts_with("death_")) %>%
+  pivot_wider(id_cols = UID:Combined_Key,
+              names_from = date,
+              values_from = c(starts_with("rt"), starts_with("case_"),
+                              starts_with("death_")))
+
+uniq_countries <- unique(subnat_rt_long$Country_Region)
+# Handle UK, Chile, and India separately
+sep_countries <- c("United Kingdom", "India")
+select_countries <- uniq_countries[!(uniq_countries %in% sep_countries)]
+subnat_sf_orig <- ne_states(country = select_countries, returnclass = "sf")
+
+# For UK, we only have England, Scotland, Wales, and Northern Ireland
+uk_sf <- ne_countries(country = "united kingdom", type = "map_units",
+                      returnclass = "sf") %>%
+  mutate(Combined_Key = paste0(name_long, ", United Kingdom"))
+
+sf_lst <- list()
+for (country in uniq_countries) {
+  if (country %in% sep_countries) {
+    next
+  }
+  country_sf <- subnat_sf_orig %>%
+    filter(admin == country)
+  if (country == "Spain" || country == "Italy") {
+    country_sf <- country_sf %>%
+      select(region) %>%
+      group_by(region) %>%
+      summarize(geometry = st_union(geometry)) %>%
+      rename(name_en = region) %>%
+      mutate(admin = country, woe_name = name_en)
+  }
+  if (country == "Germany" || country == "Netherlands" || country == "Mexico") {
+    tmp <- country_sf %>%
+      mutate(name_noacc = stri_trans_general(name, "latin-ascii"))
+  } else {
+    tmp <- country_sf %>%
+      mutate(name_noacc = stri_trans_general(name_en, "latin-ascii"))
+  }
+
+  # be aware of spaces. Spaces after means this is a prefix, spaces before means
+  # it's a postfix
+  subnat_patt <- c("Province of " = "", "Community of " = "", " Province" = "",
+                  " Department" = "", " Prefecture" = "", " Region" = "",
+                  " County" = "", "Republic of " = "")
+  final_sf <- tmp %>%
+    mutate(name_clean = str_replace_all(name_noacc, subnat_patt),
+           Combined_Key = paste0(name_clean, ", ", admin)) %>%
+    select(Combined_Key, geometry, woe_name)
+
+  if (country == "Chile") {
+    final_sf <- final_sf %>%
+      filter(!(Combined_Key %in% c("Bio Bio, Chile", "Maule, Chile")))
+  }
+  sf_lst[[country]] <- final_sf
+}
+sf_lst[["united kingdom"]] <- select(uk_sf, Combined_Key, geometry, woe_name = subunit)
+
+# For India, there was a new province created in 2014 that isn't updated on
+# rnaturalearth
+india_subnat_orig <- readRDS("~/Downloads/gadm36_IND_1_sf.rds")
+india_subnat <- india_subnat_orig %>%
+  mutate(Combined_Key = paste0(NAME_1, ", ", NAME_0)) %>%
+  select(Combined_Key, geometry, woe_name = NAME_1)
+sf_lst[["India"]] <- india_subnat
+
+chile_subnat <- readRDS("~/Downloads/gadm36_CHL_1_sf.rds") %>%
+  mutate(woe_name = stri_trans_general(NAME_1, "latin-ascii"),
+         Combined_Key = paste0(woe_name, ", ", NAME_0)) %>%
+  select(Combined_Key, geometry, woe_name) %>%
+  filter(woe_name %in% c("Bio-Bio", "Maule", "Nuble"))
+sf_lst[["Chile2"]] <- chile_subnat
+
+subnat_sf <- do.call(rbind, sf_lst)
+rownames(subnat_sf) <- NULL
+
+#relabel subnational units to align rt/map dfs
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Federal District, Brazil"] ="Distrito Federal, Brazil"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bio-Bio, Chile"] ="Biobio, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Khmelnytsky Oblast, Ukraine"] ="Khmelnytskyi Oblast, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Zaporizhzhya Oblast, Ukraine"] ="Zaporizhia Oblast, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sodermanland, Sweden"] ="Sormland, Sweden"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Islamabad Capital Territory, Pakistan"] ="Islamabad, Pakistan"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Azad Kashmir, Pakistan"] ="Azad Jammu and Kashmir, Pakistan"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tumbes region, Peru"] ="Tumbes, Peru"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Canary Is., Spain"] ="Canarias, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Andalucia, Spain"] ="Andalusia, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Islas Baleares, Spain"] ="Baleares, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Foral de Navarra, Spain"] ="Navarra, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Castilla-La Mancha, Spain"] ="Castilla - La Mancha, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Cataluna, Spain"] ="Catalonia, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Valenciana, Spain"] ="C. Valenciana, Spain"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Jamtland, Sweden"] ="Jamtland Harjedalen, Sweden"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Archipelago of Saint Andrews, Colombia"] ="San Andres y Providencia, Colombia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Magallanes y la Antartica Chilena, Chile"] <- "Magallanes, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bogota, Colombia"] ="Capital District, Colombia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sicily, Italy"] ="Sicilia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Santiago Metropolitan, Chile"] ="Metropolitana, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Libertador General Bernardo O'Higgins, Chile"] ="OHiggins, Chile"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Apulia, Italy"] ="Puglia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Friuli-Venezia Giulia, Italy"] ="Friuli Venezia Giulia, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Trentino-Alto Adige, Italy"] ="P.A. Trento, Italy"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Distrito Federal, Mexico"] ="Ciudad de Mexico, Mexico"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Dagestan, Russia"] ="Dagestan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Oryol Oblast, Russia"] ="Orel Oblast, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sakha Republic, Russia"] ="Sakha (Yakutiya) Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Kalmykia, Russia"] ="Kalmykia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Bashkortostan, Russia"] ="Bashkortostan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Mordovia, Russia"] ="Mordovia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Ingushetia, Russia"] ="Ingushetia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Karelia, Russia"] ="Karelia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Buryatia, Russia"] ="Buryatia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Jewish Autonomous Oblast, Russia"] ="Jewish Autonomous Okrug, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Khakassia, Russia"] ="Khakassia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tatarstan, Russia"] ="Tatarstan Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Chuvash Republic, Russia"] ="Chuvashia Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="North Ossetia-Alania, Russia"] ="North Ossetia - Alania Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Kabardino-Balkar Republic, Russia"] ="Kabardino-Balkarian Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Tuva Republic, Russia"] ="Tyva Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Adygea, Russia"] ="Adygea Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Autonomous Crimea, Russia"] ="Crimea Republic*, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key=="Sevastopol, Russia"] ="Sevastopol*, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Brussels-Capital, Belgium"] <- "Brussels, Belgium"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Luxembourg District, Belgium"] <- "Luxembourg, Belgium"
+subnat_sf$Combined_Key[subnat_sf$woe_name == "Kiev"] <- "Kiev Oblast, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$woe_name == "Kiev City Municipality"] <- "Kiev, Ukraine"
+subnat_sf$Combined_Key[subnat_sf$woe_name == "Gorno-Altay"] <- "Altai Republic, Russia"
+subnat_sf$Combined_Key[subnat_sf$woe_name == "Altay"] <- "Altai Krai, Russia"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "NCT of Delhi, India"] <- "Delhi, India"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Andaman and Nicobar, India"] <- "Andaman and Nicobar Islands, India"
+
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Dadra and Nagar Haveli, India"] <- "Dadra and Nagar Haveli and Daman and Diu, India"
+subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Daman and Diu, India"] <- "Dadra and Nagar Haveli and Daman and Diu, India"
+
+repeated_subnat <- subnat_sf %>%
+  group_by(Combined_Key) %>%
+  summarize(n = n()) %>%
+  filter(n > 1) %>%
+  arrange(Combined_Key) %>%
+  pull(Combined_Key)
+
+stopifnot(repeated_subnat == c("Dadra and Nagar Haveli and Daman and Diu, India", "Lima, Peru"))
+
+# join together two versions of Lima, Peru (one is the city itself, one is the
+# area surrounding the city) and join two Indian provinces
+subnat_sf <- subnat_sf %>%
+  group_by(Combined_Key) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  st_as_sf(sf_column_name = "geometry")
+
+subnat_merged <- subnat_rt_wide %>%
+  merge(subnat_sf, by = "Combined_Key", all.x = FALSE) %>%
+  mutate(resolution = paste0("subnat_", Country_Region), dispID = Combined_Key) %>%
+                              select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
+                              starts_with("death_"), geometry)
+
+exported_subnats <- data.table(UID = subnat_merged$UID)
+subnat_rt_long_export <- subnat_rt_long[exported_subnats, on = "UID"] %>%
+  mutate(resolution = paste0("subnat_", Country_Region)) %>%
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
+         starts_with("rt"), starts_with("positive"), starts_with("death"),
+         starts_with("case")) %>%
+  data.table()
+
+subnat_rt_test <- subnat_rt_wide %>%
+  select(Combined_Key, UID, Province_State, Country_Region)
+
+# provinces with no maps
+cat("Provinces with no map data:\n")
+subnat_rt_test %>%
+  anti_join(subnat_sf, by = "Combined_Key") %>%
+  arrange(Country_Region)
+
+# maps with no COVID data
+cat("Maps with no COVID data:\n")
+subnat_sf %>%
+  select(Combined_Key) %>%
+  st_drop_geometry() %>%
+  anti_join(subnat_rt_test, by = "Combined_Key")
 
 ########################################################################
 ## International countries
@@ -491,9 +787,9 @@ new_points <- make_points(unjoined_latlong, "Combined_Key", st_crs(sf_tiny_use))
 sf_world <- rbind(sf_world_temp, new_points) %>%
   select(UID, geometry)
 
-countries_w_states_provinces <- c("US", "Canada", "Australia", "China")
 world_merged <- countries_wide %>%
-  select(UID, Combined_Key, starts_with("Rt_")) %>%
+  select(UID, Combined_Key, starts_with("rt_"), starts_with("case_"),
+         starts_with("death_")) %>%
   mutate(resolution = "country") %>%
   merge(sf_world, ., by = "UID", all = FALSE) %>%
   rename(dispID = Combined_Key)
@@ -501,24 +797,26 @@ world_merged <- countries_wide %>%
 exported_countries <- data.table(UID = world_merged$UID)
 world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
   mutate(resolution = "country") %>%
-  select(UID, dispID = Combined_Key, date, date_lag, resolution,
-         starts_with("Rt_"), starts_with("positive"), starts_with("death"))
+  select(UID, dispID = Combined_Key, date, date_lag, resolution, population,
+         starts_with("rt"), starts_with("positive"), starts_with("death"),
+         starts_with("case")) %>%
+  data.table()
 
 ########################################################################
 ## Get choices for names
 ########################################################################
 
-sf_all <- rbind(world_merged, provinces_merged, state_merged, county_merged)
-rt_long_all <- rbind(state_rt_long_export, county_rt_long_export,
-                     provinces_rt_long_export, world_rt_long_export) %>%
-  as_tibble()
+# use fill; not all dates available in subnational data
+sf_all <- bind_rows(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
+rt_long_all <- rbind(world_rt_long_export, provinces_rt_long_export, subnat_rt_long_export,
+                     state_rt_long_export, county_rt_long_export)
 
 state_province_names1 <- sf_all %>%
-  filter(startsWith(resolution, "state"),
+  filter(startsWith(resolution, "subnat"),
          !(dispID %in% c("Hong Kong, China", "Macau, China"))) %>%
   select(dispID, UID)
 state_province_names2 <- sf_all %>%
-  filter(startsWith(resolution, "state"),
+  filter(startsWith(resolution, "subnat"),
          dispID %in% c("Hong Kong, China", "Macau, China")) %>%
   select(dispID, UID)
 state_province_names <- rbind(state_province_names1, state_province_names2) %>%
@@ -551,15 +849,15 @@ country_names <- sf_all %>%
 
 us_states_w_counties <- us_state_dt %>%
   filter(state %in% unique(county_names$State), state != "District of Columbia")
-stopifnot(nrow(us_states_w_counties) == 50)
+stopifnot(nrow(us_states_w_counties) == 51)
 
 names_list <- list(
-  state = as.list(state_province_names$UID),
+  subnat = as.list(state_province_names$UID),
   county = as.list(county_names$UID),
   country = as.list(country_names$UID),
   us_state = as.list(us_state_dt$UID),
   us_states_w_counties = as.list(us_states_w_counties$UID))
-names(names_list$state) <- state_province_names$dispID
+names(names_list$subnat) <- state_province_names$dispID
 names(names_list$county) <- county_names$dispID
 names(names_list$country) <- country_names$dispID
 names(names_list$us_state) <- us_state_dt$state
@@ -573,39 +871,11 @@ rep_names
 stopifnot(nrow(rep_names) == 0)
 
 ########################################################################
-## Get state centers for plotting
-########################################################################
-
-get_lnglat <- function(geometry, UID) {
-  bbox <- st_bbox(geometry)
-  # do a weighted mean because we want the legend on the right side
-  lng <- weighted.mean(c(bbox["xmin"], bbox["xmax"]), c(0.25, 0.75))
-  lat <- mean(c(bbox["ymin"], bbox["ymax"]))
-  if (UID == "84000002") {
-    # Alaska
-    lng <- -147
-  } else if (UID == "84000015") {
-    # Hawaii
-    lng <- -154.65
-    lat <- 20.09
-  }
-  return(c(lng, lat))
-}
-
-usa_state_counties <- sf_all %>%
-  filter(resolution == "state_USA", UID > 12499) %>%
-  select(UID, dispID, geometry)
-
-state_centers <- map2(usa_state_counties$geometry, usa_state_counties$UID,
-                      get_lnglat)
-names(state_centers) <- usa_state_counties$UID
-
-########################################################################
 ## Save everything
 ########################################################################
 
-saveRDS(sf_all, "clean_data/sf_all.rds")
-saveRDS(rt_long_all, "clean_data/rt_long_all.rds")
-saveRDS(names_list, "clean_data/names_list.rds")
-saveRDS(state_centers, "clean_data/state_centers.rds")
-write_csv(rt_long_all, "clean_data/rt_table_export.csv")
+out_dir = "clean_data_pois"
+saveRDS(sf_all, file.path(out_dir, "sf_all.rds"))
+saveRDS(rt_long_all, file.path(out_dir, "rt_long_all.rds"))
+saveRDS(names_list, file.path(out_dir, "names_list.rds"))
+fwrite(rt_long_all, file.path(out_dir, "rt_table_export.csv"))

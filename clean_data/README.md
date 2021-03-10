@@ -1,4 +1,8 @@
-# Cleaned Data Files
+# Rt calculated from EpiEstim
+
+**Update Mar 12, 2021**: These files are being superceded by those calculated by
+our newly developed Poisson GLM method, which can be accessed here:
+https://github.com/lin-lab/COVID19-Viz/tree/dev/clean_data_pois
 
 **Update Oct 23, 2020**: These data files have been moved to AWS because hosting
 them on Git was becoming extremely unwieldy. Please click the links below to
