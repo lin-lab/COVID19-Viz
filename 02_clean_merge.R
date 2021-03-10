@@ -16,73 +16,12 @@ library(stringi)
 
 START_DATE <- ymd("2020-04-01")
 
-<<<<<<< HEAD
-#' Calculate loess curve for Rt by date_lag.
-Rt_loess <- function(dat) {
-  if (nrow(dat) < 3) {
-    ret_df <- data.table(Rt_loess_fit = NA_real_,
-                         Rt_loess_lwr = NA_real_,
-                         Rt_loess_upr = NA_real_,
-                         rowid = dat$rowid)
-  } else {
-    loess_fit <- loess(Rt_plot ~ as.numeric(date_lag), data = dat)
-    pred_obj <- predict(loess_fit, dat, se = TRUE)
-    tstar <- qt(0.975, pred_obj$df)
-    ret_df <- data.table(Rt_loess_fit = pred_obj$fit,
-                        Rt_loess_lwr = pred_obj$fit - tstar * pred_obj$se.fit,
-                        Rt_loess_upr = pred_obj$fit + tstar * pred_obj$se.fit,
-                        rowid = dat$rowid)
-  }
-  return(ret_df)
-}
-
-#' Lag, subset, and modify the Rt data.
-#'
-#' This function lags the Rt by a specified number of days. Then, we filter
-#' out Rts outside the date range. We also set Rt to be NA on days when there
-#' are not enough total cases or when the average number of new cases in the
-#' past few days is below a certain threshold. We do this for each location in
-#' the data. We also compute the per capita case and death rate (per 10000)
-#' and the per capita new cases and new deaths (per million)
-#'
-#' @param dt Input data frame. Assumed to have columns date, positiveIncrease,
-#' positive, mean_rt, ci_upper, ci_lower.
-#' @param group_var Variable that indicates each location.
-#' @param nlag Number of days to lag Rt by.
-#' @param window_size Number of days to average the new cases over. Note that
-#' the window is right-aligned, e.g. if the date is June 7, we will take the
-#' average from June 1 to June 7.
-#' @param pos_cutoff Set Rt to NA if the number of total cases on any particular
-#' day does not exceed this number.
-#' @param posincr_cutoff Set Rt to NA if the average number of new cases on
-#' the past window_size days does not exceed this number.
-#' @param start_date Take times after this start date.
-#' @param end_date Take times before this end date.
-#'
-lag_subset_mod <- function(dt, group_var = "UID", nlag = 7,
-                           window_size = 7, pos_cutoff = 50,
-                           posincr_cutoff = 10,
-                           start_date = ymd("2020-03-19"),
-                           end_date = today()) {
-  stopifnot(start_date <= end_date)
-  dt[positiveIncrease <= 0, posIncr_trunc := 0]
-  dt[positiveIncrease > 0, posIncr_trunc := positiveIncrease]
-  dt[, date_lag := date - ddays(nlag)]
-  dt[, rolling_posIncr := frollmean(posIncr_trunc, n = window_size,
-                                    align = "right", algo = "exact"),
-      by = group_var]
-  dt[, positive_7day := frollmean(positiveIncrease, n = 7,
-                                  align = "right", algo = "exact"),
-      by = group_var]
-  dt[, positive_percapita := 1e6 * positive/ population]
-=======
 reformat_data <- function(dt, start_date) {
   scale_cols <- c("case_rate", "case_lower", "case_upper", "death_rate",
                   "death_lower", "death_upper")
   dt[, (scale_cols) := lapply(.SD, function(x) { x * 1e6 }),
      .SDcols = scale_cols]
   dt[, positive_percapita := 1e6 * positive / population]
->>>>>>> dev
   dt[, death_percapita := 1e6 * death / population]
   dt[, positiveIncrease_percapita := 1e6 * positiveIncrease / population]
   dt[, deathIncrease_percapita := 1e6 * deathIncrease / population]
