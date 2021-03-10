@@ -396,8 +396,8 @@ click_plot <- function(plt_dat) {
   ymax_newcases <- NA
   newcases_plt <- plt_dat %>%
     ggplot(aes(x = date, y = case_rate, ymin = case_lower, ymax = case_upper)) +
-    geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Smoothed")) +
-    geom_line(aes(y = positiveIncrease_percapita, linetype = "Unsmoothed")) +
+    geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Estimated")) +
+    geom_line(aes(y = positiveIncrease_percapita, linetype = "Observed")) +
     xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
     #coord_cartesian(ylim = c(1, ymax_newcases)) +
@@ -406,12 +406,12 @@ click_plot <- function(plt_dat) {
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
           legend.position = "bottom") +
-    guides(linetype = guide_legend(nrow = 2))
+    guides(linetype = guide_legend(title = NULL, nrow = 1))
   deaths_plt_title <- sprintf("New Deaths for %s", place_name)
   deaths_plt <- plt_dat %>%
     ggplot(aes(x = date, y = death_rate, ymin = death_lower, ymax = death_upper)) +
-    geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Smoothed")) +
-    geom_line(aes(y = deathIncrease_percapita, linetype = "Unsmoothed")) +
+    geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Estimated")) +
+    geom_line(aes(y = deathIncrease_percapita, linetype = "Observed")) +
     xlab("Date") + ylab("") + ggtitle(deaths_plt_title) +
     theme_cowplot() +
     coord_cartesian(ylim = c(0, NA)) +
@@ -419,24 +419,10 @@ click_plot <- function(plt_dat) {
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
           legend.position = "bottom") +
-    guides(linetype = guide_legend(nrow = 2))
+    guides(linetype = guide_legend(title = NULL, nrow = 1))
   final_plt <- plot_grid(rt_plt, newcases_plt, deaths_plt, ncol = 1,
                          align = "v", axis = "l")
   return(final_plt)
-}
-
-#' Draw a blank plot
-blank_plot <- function(title = "Insufficient data") {
-  p <- ggplot() + ggtitle(title) +
-    theme(axis.text.y = element_text(size = 16),
-          axis.text.x = element_text(size = 16),
-          axis.title = element_text(size = 20),
-          legend.title = element_text(size = 18),
-          legend.text = element_text(size = 16),
-          plot.title = element_text(size = 24),
-          panel.grid.major.x = element_blank(),
-          panel.grid.minor.x = element_blank())
-  return(p)
 }
 
 #' Helper function for forest plot and heat map
@@ -526,10 +512,7 @@ setup_plot_df <- function(sel_resolution, date_select = NULL,
 forest_plot <- function(plt_df_params) {
 
   p <- with(plt_df_params, {
-    if (nrow(plt_df) == 0) {
-      # quit if there's no data
-      return(blank_plot())
-    }
+    req(nrow(plt_df) > 0)
     title_str <- sprintf("%s on %s", plt_params$title_str, date_select)
     xlab_str <- sprintf("%s and 95%% CI", plt_params$title_str)
     if (all(plt_df[[plt_params$upr]] < plt_params$max_value)) {
@@ -561,9 +544,7 @@ forest_plot <- function(plt_df_params) {
 #' Draw heat map of Rt/case/death rate
 heat_map <- function(plt_df_params) {
   p <- with(plt_df_params, {
-    if (nrow(plt_df) == 0) {
-      return(blank_plot())
-    }
+    req(nrow(plt_df) > 0)
 
     title_str <- sprintf("%s Heatmap", plt_params$title_str)
     xlab_str <- sprintf("%s", plt_params$title_str)
@@ -760,6 +741,7 @@ ui <- function(req) {
   dashboardSidebar(
     # If you want to add / subtract a tab from the sidebar, you must modify it
     # here and also add a new tabItem below.
+    width = 100,
     sidebarMenu(
       menuItem("Map", tabName = "Map"),
       menuItem("Compare", tabName = "compare_rt"),
@@ -805,9 +787,9 @@ ui <- function(req) {
                              value = date_lag_range[2] - 1,
                              format = "D MM d, yyyy", width = "95%"),
                    actionButton("map_latest", label = "Latest"),
-                   actionButton("map_2week", label = "2 weeks ago"),
-                   actionButton("map_1month", label = "1 month ago"),
-                   actionButton("map_2month", label = "2 months ago"),
+                   actionButton("map_2week", label = "2 wks ago"),
+                   actionButton("map_1month", label = "1 mo ago"),
+                   actionButton("map_2month", label = "2 mo ago"),
                    textOutput("date_warning")
             ), # end of column 1
             column(width = 4,
@@ -825,9 +807,9 @@ ui <- function(req) {
             ) # end of column 3
           ), # end of fluidRow 1
           fluidRow(
-            column(8, leafletOutput("map_main", height = "600px", width = "100%")),
+            column(8, leafletOutput("map_main", height = "500px", width = "100%")),
             # plot of Rt over time
-            column(4, plotOutput("map_click_plot", height = "600px"))
+            column(4, plotOutput("map_click_plot", height = "500px"))
           ), # end of fluidRow 2
           # hidden heatmap and forestplot
           fluidRow(
@@ -860,9 +842,8 @@ ui <- function(req) {
           fluidPage(
             column(width = 4,
               h4("Select areas to compare their Rt."),
+              includeMarkdown("assets/compare_rt_intro.md"),
               p(sprintf("Note the Rt is lagged by %d days.", lag_rt)),
-              p("Some areas may not appear in the plot for all time points because of insufficient data."),
-              p("Occasionally, locations may have negative values for new cases because of reporting issues."),
               # break up the selection by state, county, and country
               # source for remove button:
               # https://gist.github.com/pvictor/ee154cc600e82f3ed2ce0a333bc7d015
@@ -1008,7 +989,7 @@ server <- function(input, output, session) {
       loc_info$value <- ipinfo
       updateStore(session, "loc_info", ipinfo)
     } else {
-      message("Read value from storage")
+      cat(file = stderr(), "Read value from storage\n")
       # spin lock while waiting for storage to update
       while (is.null(input$store$loc_info)) {
         Sys.sleep(0.1)
@@ -1164,6 +1145,7 @@ server <- function(input, output, session) {
                   labels = legend_params$cur_labels,
                   opacity = 0.7, title = legend_params$cur_title,
                   position = "bottomleft", layerId = "legend")
+    #cat(file = stderr(), "Calling leaflet rendered\n")
     suppressWarnings(map)
   })
 
@@ -1335,7 +1317,7 @@ server <- function(input, output, session) {
                 isTRUE(identical(cur_res, "630"))) {
         ret <- as.integer(cur_res)
       }
-      cat(file = stderr(), sprintf("Setting resolution to %d\n", ret))
+      #cat(file = stderr(), sprintf("Setting resolution to %d\n", ret))
     }
     ret
   })
