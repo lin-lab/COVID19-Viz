@@ -261,7 +261,7 @@ of Biostatistics](https://www.hsph.harvard.edu/biostatistics/) at the
 
 - Rt Calculation: Andy Shi, Sheila Gaynor, Corbin Quick
 
-- Sensitivity Analysis: Xihao Li, Hui Li, Zilin Li, Derek Shyr
+- Helpful discussions: Xihao Li, Hui Li, Zilin Li, Derek Shyr
 
 - Principal Investigator: Xihong Lin
 
