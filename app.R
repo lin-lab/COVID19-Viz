@@ -27,7 +27,7 @@ library(data.table)
 library(RColorBrewer)
 library(shinyStore)
 
-#source("src/leaflet_recolor.R")
+source("src/leaflet_recolor.R")
 
 ########################################################################
 ## Load data files
@@ -321,34 +321,28 @@ sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
 #' clearGroup to remove the added polygons and points.
 addPolygon_Point <- function(.map, .data, labels,
                              metric = c("rt", "case", "death"),
-                             grpid = "default", inplace = FALSE) {
+                             grpid = "default") {
   metric <- match.arg(metric)
   stopifnot(names(.data) == c("estimate", "ci_lower", "ci_upper", "UID",
                               "dispID", "geometry"))
   pal_cur <- pal_lst[[metric]]
   pal <- pal_cur(domain = .data$estimate)
-  if (inplace) {
-    #cat(file = stderr(), "Calling setShapeStyle2...\n")
-    #map_ret <- setShapeStyle(.map, layerId = ~UID, fillColor = ~pal(estimate),
-    #                         opacity = 1, weight = 0.5, color = "white",
-    #                         dashArray = "3", fillOpacity = 0.7)
+  polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
+  data_polygons <- .data[polygon_idx, ]
+  data_points <- .data[!polygon_idx, ]
+  # layerId should be a string so we can change it with setShapeStyle
+  map_ret <- addPolygons_default(.map, data = data_polygons,
+                                  group = grpid,
+                                  fillColor = ~pal(estimate),
+                                  layerId = as.character(data_polygons$UID),
+                                  label = labels[polygon_idx])
 
-  } else {
-    polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
-    data_polygons <- .data[polygon_idx, ]
-    data_points <- .data[!polygon_idx, ]
-    print(data_polygons$UID)
-    map_ret <- addPolygons_default(.map, data = data_polygons,
-                                   group = grpid,
-                                   fillColor = ~pal(estimate), layerId = ~UID,
-                                   label = labels[polygon_idx])
-
-    if (sum(polygon_idx) < nrow(.data)) {
-      map_ret <- addCircles_default(map_ret, data = data_points,
-                                    group = grpid,
-                                    fillColor = ~pal(estimate), layerId = ~UID,
-                                    label = labels[!polygon_idx])
-    }
+  if (sum(polygon_idx) < nrow(.data)) {
+    map_ret <- addCircles_default(map_ret, data = data_points,
+                                  group = grpid,
+                                  fillColor = ~pal(estimate),
+                                  layerId = as.character(data_points$UID),
+                                  label = labels[!polygon_idx])
   }
   return(map_ret)
 }
@@ -763,7 +757,7 @@ ui <- function(req) {
   dashboardBody(
     tags$head(tags$link(rel = "shortcut icon", type = "image/png",
                         href = "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_assets/covid19logo2.png")),
-    #tags$head(tags$script(src = "leaflet_recolor.js")),
+    tags$head(tags$script(src = "leaflet_recolor.min.js")),
     tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
     tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 16px}")),
     tags$head(includeHTML("assets/google-analytics.html")),
@@ -1231,18 +1225,16 @@ server <- function(input, output, session) {
     prev_grpid <- prev_grpid_res$grpid
     map <- leafletProxy("map_main", data = sf_dat_cur)
     if (identical(prev_grpid_res$res, sel_resolution)) {
-      cat(file = stderr(), "Calling setShapeStyle...\n")
-      pal <- pal_lst[[cur_metric]]
-      fillColor <- pal(sf_dat_cur[["estimate"]])(sf_dat_cur[["estimate"]])
+      pal_cur <- pal_lst[[cur_metric]]
+      pal <- pal_cur(domain = sf_dat_cur[["estimate"]])
       suppressWarnings({
         map <- map %>%
-          setShapeStyle(layerId = sf_dat_cur$UID,
-                        fillColor = fillColor,
+          setShapeStyle(layerId = as.character(sf_dat_cur$UID),
+                        fillColor = ~pal(estimate),
                         opacity = 1, weight = 0.5, color = "white",
                         dashArray = "3", fillOpacity = 0.7)
       })
     } else {
-      cat(file = stderr(), "Calling addPolygon_Point...\n")
       if (prev_grpid != cur_grpid) {
         suppressWarnings({
           map <- map %>%

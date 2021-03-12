@@ -6,7 +6,6 @@ window.LeafletWidget.methods.setStyle = function(category, layerId, style){
   } else if (!(typeof(layerId) === "object" && layerId.length)){ // in case a single layerid is given
     layerId = [layerId];
   }
-  console.log(layerId);
 
   //convert columnstore to row store
   style = HTMLWidgets.dataframeToD3(style);
@@ -15,7 +14,6 @@ window.LeafletWidget.methods.setStyle = function(category, layerId, style){
     var layer = map.layerManager.getLayer(category, d);
     console.log(layer)
     if (layer){ // or should this raise an error?
-      console.log("hello");
       layer.setStyle(style[i]);
     }
   });
