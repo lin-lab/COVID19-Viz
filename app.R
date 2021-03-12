@@ -114,26 +114,26 @@ pal_deaths <- purrr::partial(colorBin, palette = colors_cases,
 pal_lst <- list(rt = pal_rt, case = pal_cases, death = pal_deaths)
 
 # set up defaults for adding stuff to leaflet maps
+highlightOptions_default <-
+  highlightOptions(weight = 5, color = "#666", dashArray = "",
+                   fillOpacity = 0.7, bringToFront = TRUE)
+labelOptions_default <- labelOptions(style = list("font-weight" = "normal",
+                                                  padding = "3px 8px"),
+                                     textsize = "15px", direction = "auto")
+
+
 addPolygons_default <-
   purrr::partial(addPolygons, opacity = 1, weight = 0.5, color = "white",
-                dashArray = "3", fillOpacity = 0.7,
-                highlight = highlightOptions(
-                  weight = 5, color = "#666", dashArray = "",
-                  fillOpacity = 0.7, bringToFront = TRUE),
-                labelOptions = labelOptions(
-                  style = list("font-weight" = "normal", padding = "3px 8px"),
-                  textsize = "15px", direction = "auto"))
+                 dashArray = "3", fillOpacity = 0.7,
+                 highlight = highlightOptions_default,
+                 labelOptions = labelOptions_default)
 
 addCircles_default <-
   purrr::partial(addCircles, opacity = 1, weight = 1, radius = 17000,
-                dashArray = "3", fillOpacity = 0.7, stroke = TRUE,
-                color = "white",
-                labelOptions = labelOptions(
-                  style = list("font-weight" = "normal", padding = "3px 8px"),
-                  textsize = "15px", direction = "auto"),
-                highlightOptions = highlightOptions(
-                  weight = 5, color = "#666", dashArray = "",
-                  fillOpacity = 0.7, bringToFront = TRUE))
+                 dashArray = "3", fillOpacity = 0.7, stroke = TRUE,
+                 color = "white",
+                 labelOptions = labelOptions_default,
+                 highlightOptions = highlightOptions_default)
 
 
 country_uids <- sf_all %>%
@@ -754,7 +754,6 @@ ui <- function(req) {
                         href = "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_assets/covid19logo2.png")),
     tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
     tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 16px}")),
-    #tags$head(tags$script(src = "shinyjs_funs.js")),
     tags$head(includeHTML("assets/google-analytics.html")),
     tags$head(tags$style(
         ".leaflet .legend {text-align: left;}",
@@ -1151,6 +1150,11 @@ server <- function(input, output, session) {
     suppressWarnings(map)
   })
 
+  observeEvent(leaflet_rendered(), {
+    cat(file = stderr(), sprintf("leaflet_rendered is set to: %s\n",
+                                 leaflet_rendered()))
+  })
+
   # change the date selector widget / send the new date to sf_dat_update
   #observeEvent(input$map_metric, {
   #  if (input$map_metric == "rt") {
@@ -1418,7 +1422,6 @@ server <- function(input, output, session) {
     } else {
       num_rows <- heatmap_data()$uniqn_dispIDs
     }
-    #num_rows <- sum(is.na(heatmap_data()[, ..column_select]))
     plt_height <- sprintf("%dpx", max(20 * num_rows, 300))
     plotOutput("heatmap", height = plt_height)
   })
