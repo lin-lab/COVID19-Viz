@@ -27,6 +27,8 @@ library(data.table)
 library(RColorBrewer)
 library(shinyStore)
 
+#source("src/leaflet_recolor.R")
+
 ########################################################################
 ## Load data files
 ########################################################################
@@ -319,25 +321,34 @@ sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
 #' clearGroup to remove the added polygons and points.
 addPolygon_Point <- function(.map, .data, labels,
                              metric = c("rt", "case", "death"),
-                             grpid = "default") {
+                             grpid = "default", inplace = FALSE) {
   metric <- match.arg(metric)
   stopifnot(names(.data) == c("estimate", "ci_lower", "ci_upper", "UID",
                               "dispID", "geometry"))
   pal_cur <- pal_lst[[metric]]
   pal <- pal_cur(domain = .data$estimate)
-  polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
-  data_polygons <- .data[polygon_idx, ]
-  data_points <- .data[!polygon_idx, ]
-  map_ret <- addPolygons_default(.map, data = data_polygons,
-                                 group = grpid,
-                                 fillColor = ~pal(estimate), layer = ~UID,
-                                 label = labels[polygon_idx])
+  if (inplace) {
+    #cat(file = stderr(), "Calling setShapeStyle2...\n")
+    #map_ret <- setShapeStyle(.map, layerId = ~UID, fillColor = ~pal(estimate),
+    #                         opacity = 1, weight = 0.5, color = "white",
+    #                         dashArray = "3", fillOpacity = 0.7)
 
-  if (sum(polygon_idx) < nrow(.data)) {
-    map_ret <- addCircles_default(map_ret, data = data_points,
-                                  group = grpid,
-                                  fillColor = ~pal(estimate), layer = ~UID,
-                                  label = labels[!polygon_idx])
+  } else {
+    polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
+    data_polygons <- .data[polygon_idx, ]
+    data_points <- .data[!polygon_idx, ]
+    print(data_polygons$UID)
+    map_ret <- addPolygons_default(.map, data = data_polygons,
+                                   group = grpid,
+                                   fillColor = ~pal(estimate), layerId = ~UID,
+                                   label = labels[polygon_idx])
+
+    if (sum(polygon_idx) < nrow(.data)) {
+      map_ret <- addCircles_default(map_ret, data = data_points,
+                                    group = grpid,
+                                    fillColor = ~pal(estimate), layerId = ~UID,
+                                    label = labels[!polygon_idx])
+    }
   }
   return(map_ret)
 }
@@ -752,6 +763,7 @@ ui <- function(req) {
   dashboardBody(
     tags$head(tags$link(rel = "shortcut icon", type = "image/png",
                         href = "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_assets/covid19logo2.png")),
+    #tags$head(tags$script(src = "leaflet_recolor.js")),
     tags$head(tags$style(type="text/css", "div.info.legend.leaflet-control br {clear: both;}")),
     tags$head(tags$style(type = "text/css", "body {font-size: 16px} .aboutpage {font-size: 16px}")),
     tags$head(includeHTML("assets/google-analytics.html")),
@@ -1202,7 +1214,7 @@ server <- function(input, output, session) {
   # change the default clicked object when resolution changes
 
   # keep track of previous group ID so we can clear its shapes
-  prev_grpid_all_reactive <- reactiveValues(val = "")
+  prev_grpid_res <- reactiveValues(grpid = "", res = "")
 
   # change the shapes on the map when the resolution or date changes
   observe({
@@ -1211,19 +1223,37 @@ server <- function(input, output, session) {
     date_select <- format(isolate(input$map_date), "%Y-%m-%d")
     sel_resolution <- isolate(input$select_resolution)
     cur_metric <- isolate(input$map_metric)
+    #date_select <- format(input$map_date, "%Y-%m-%d")
+    #sel_resolution <- input$select_resolution
+    #cur_metric <- input$map_metric
     labels_final <- master_labeller(sf_dat_cur, date_select, cur_metric)
     cur_grpid <- digest::digest(c(date_select, sel_resolution, cur_metric))
-    prev_grpid <- prev_grpid_all_reactive$val
+    prev_grpid <- prev_grpid_res$grpid
     map <- leafletProxy("map_main", data = sf_dat_cur)
-    if (prev_grpid != cur_grpid) {
+    if (identical(prev_grpid_res$res, sel_resolution)) {
+      cat(file = stderr(), "Calling setShapeStyle...\n")
+      pal <- pal_lst[[cur_metric]]
+      fillColor <- pal(sf_dat_cur[["estimate"]])(sf_dat_cur[["estimate"]])
       suppressWarnings({
         map <- map %>%
-          addPolygon_Point(sf_dat_cur, labels = labels_final,
-                           metric = cur_metric, grpid = cur_grpid) %>%
-          clearGroup(prev_grpid)
+          setShapeStyle(layerId = sf_dat_cur$UID,
+                        fillColor = fillColor,
+                        opacity = 1, weight = 0.5, color = "white",
+                        dashArray = "3", fillOpacity = 0.7)
       })
+    } else {
+      cat(file = stderr(), "Calling addPolygon_Point...\n")
+      if (prev_grpid != cur_grpid) {
+        suppressWarnings({
+          map <- map %>%
+            addPolygon_Point(sf_dat_cur, labels = labels_final,
+                             metric = cur_metric, grpid = cur_grpid) %>%
+            clearGroup(prev_grpid)
+        })
+      }
+      prev_grpid_res$grpid <- cur_grpid
+      prev_grpid_res$res <- sel_resolution
     }
-    prev_grpid_all_reactive$val <- cur_grpid
     map
   })
 
