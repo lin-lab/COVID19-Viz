@@ -83,6 +83,19 @@ extended to calculate the case rate and death rate by modeling the expected
 number of new cases or deaths per day as the case or death rate times the
 population.
 
+Our method requires the following data:
+
+-   Daily new cases and deaths: we used data from Johns Hopkins
+    University Center for Systems Science and Engineering (JHU-CSSE)
+    [Coronavirus Resource
+    Center](https://github.com/CSSEGISandData/COVID-19) ([Dong, E., et
+    al, 2020](https://doi.org/10.1016/S1473-3099%2820%2930120-1)).
+
+-   The input parameter values of the distribution of the disease serial
+    interval: We used a Gamma distribution with a mean of 5.2 days and a
+    standard deviation of 5.1 days ([He, X., et al,
+    2020](https://doi.org/10.1038/s41591-020-0869-5)).
+
 For a full description of our method, please see [our paper]().
 
 ### Rt Lag Adjustment
