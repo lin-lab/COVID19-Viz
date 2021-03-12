@@ -529,13 +529,24 @@ sf_lst[["united kingdom"]] <- select(uk_sf, Combined_Key, geometry, woe_name = s
 
 # For India, there was a new province created in 2014 that isn't updated on
 # rnaturalearth
-india_subnat_orig <- readRDS("~/Downloads/gadm36_IND_1_sf.rds")
-india_subnat <- india_subnat_orig %>%
+india_simplified_fname <- "./ext-data/india_sf_simplified.rds"
+if (!file.exists(india_simplified_fname)) {
+  library(rmapshaper)
+  message("Simplifying India geometry...")
+  india_subnat_orig <- readRDS("./ext-data/gadm36_IND_1_sf.rds")
+  india_simplified <- india_subnat_orig %>%
+    ms_simplify()
+  saveRDS(india_simplified, file = india_simplified_fname)
+} else {
+  india_simplified <- readRDS(india_simplified_fname)
+}
+
+india_subnat <- india_simplified %>%
   mutate(Combined_Key = paste0(NAME_1, ", ", NAME_0)) %>%
   select(Combined_Key, geometry, woe_name = NAME_1)
 sf_lst[["India"]] <- india_subnat
 
-chile_subnat <- readRDS("~/Downloads/gadm36_CHL_1_sf.rds") %>%
+chile_subnat <- readRDS("./ext-data/gadm36_CHL_1_sf.rds") %>%
   mutate(woe_name = stri_trans_general(NAME_1, "latin-ascii"),
          Combined_Key = paste0(woe_name, ", ", NAME_0)) %>%
   select(Combined_Key, geometry, woe_name) %>%
