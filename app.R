@@ -987,6 +987,8 @@ server <- function(input, output, session) {
   loc_info <- reactiveValues(value = NULL, resolution = NULL)
 
   observe({
+    req(!is.null(input$remote_addr))
+    req(length(input$remote_addr) > 0)
     ipaddr <- strsplit(isolate(input$remote_addr), ", ", fixed = TRUE)[[1]][1]
     if (is.null(input$store$loc_info) ||
         is.null(input$store$loc_info$ipaddr) ||
