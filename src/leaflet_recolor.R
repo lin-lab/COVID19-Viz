@@ -76,3 +76,10 @@ setShapeStyle <- function( map, data = getMapData(map), layerId,
   #print(list(style=style))
   leaflet::invokeMethod(map, data, "setStyle", "shape", layerId, style);
 }
+
+setShapeLabel <- function( map, data = getMapData(map), layerId,
+                           label = NULL,
+                           options = NULL
+){
+  leaflet::invokeMethod(map, data, "setLabel", "shape", layerId, label, options);
+}

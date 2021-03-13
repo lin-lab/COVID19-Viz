@@ -1223,7 +1223,14 @@ server <- function(input, output, session) {
           setShapeStyle(layerId = as.character(sf_dat_cur$UID),
                         fillColor = ~pal(estimate),
                         opacity = 1, weight = 0.5, color = "white",
-                        dashArray = "3", fillOpacity = 0.7)
+                        dashArray = "3", fillOpacity = 0.7) %>%
+          setShapeLabel(layerId = as.character(sf_dat_cur$UID),
+                        label = unlist(labels_final),
+                        options = labelOptions(
+                          style = list("font-weight" = "normal",
+                                       padding = "3px 8px"),
+                          textsize = "15px", direction = "auto"))
+
       })
     } else {
       if (prev_grpid != cur_grpid) {
