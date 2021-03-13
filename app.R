@@ -1111,7 +1111,6 @@ server <- function(input, output, session) {
   # We isolate all the reactives because we want this to trigger only on
   # startup. Any other time, we use the observers and leafletproxy so we don't
   # need to re-draw the leaflet tiles
-  leaflet_rendered <- reactiveVal(value = FALSE)
   output$map_main <- renderLeaflet({
     map <- leaflet(options = leafletOptions(worldCopyJump = TRUE,
                                        zoomControl = FALSE)) %>%
@@ -1148,7 +1147,6 @@ server <- function(input, output, session) {
                   opacity = 0.7, title = legend_params$cur_title,
                   position = "bottomleft", layerId = "legend")
     #cat(file = stderr(), "Calling leaflet rendered\n")
-    leaflet_rendered(TRUE)
     suppressWarnings(map)
   })
 
@@ -1177,7 +1175,6 @@ server <- function(input, output, session) {
 
   # change the zoom level when the resolution changes.
   observeEvent(map_view(), {
-    req(leaflet_rendered())
     map_view_cur <- map_view()
 
     if (map_view_cur$type == "bbox") {
@@ -1203,7 +1200,6 @@ server <- function(input, output, session) {
 
   # change the shapes on the map when the resolution or date changes
   observe({
-    req(leaflet_rendered())
     sf_dat_cur <- sf_dat_update()
     date_select <- format(isolate(input$map_date), "%Y-%m-%d")
     sel_resolution <- isolate(input$select_resolution)
@@ -1249,7 +1245,6 @@ server <- function(input, output, session) {
 
   # change the legend when the map metric changes
   observeEvent(input$map_metric, {
-    req(leaflet_rendered())
     shiny::validate(need(input$map_metric, "Please select a metric."))
 
     # part for changing the map
