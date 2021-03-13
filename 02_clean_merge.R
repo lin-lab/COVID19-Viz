@@ -820,6 +820,9 @@ rep_names <- names_dt[, .N, by = names][N > 1, ]
 rep_names
 stopifnot(nrow(rep_names) == 0)
 
+sf_all <- sf_all %>%
+  select(UID)
+
 ########################################################################
 ## Save everything
 ########################################################################

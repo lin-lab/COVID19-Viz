@@ -61,7 +61,7 @@ sf_all <- read_aws_or_local("sf_all.rds")
 
 # long data frame of Rts
 rt_long_all <- read_aws_or_local("rt_long_all.rds")
-setkey(rt_long_all, UID)
+setkeyv(rt_long_all, cols = c("UID", "date", "resolution"))
 
 # make sure we picked up the right one
 stopifnot("case_rate" %in% colnames(rt_long_all))
@@ -138,9 +138,7 @@ addCircles_default <-
                   fillOpacity = 0.7, bringToFront = TRUE))
 
 
-country_uids <- sf_all %>%
-  filter(resolution == "country") %>%
-  pull(UID)
+country_uids <- unique(rt_long_all[resolution == "country", UID])
 
 table_col_choices <-
   list("Rt" = "rt_lag",
@@ -217,7 +215,7 @@ query_ip <- function(ip, key = IP_API_KEY) {
 #' Generate labels for Rt, case rate, or death rate.
 #'
 rate_labeller <- function(sf_dat, metric = c("rt", "case", "death")) {
-  stopifnot(names(sf_dat) == c("estimate", "ci_lower", "ci_upper", "UID",
+  stopifnot(names(sf_dat) == c("UID", "estimate", "ci_lower", "ci_upper",
                                "dispID", "geometry"))
   metric <- match.arg(metric)
   metric_col <- sf_dat$estimate
@@ -287,28 +285,28 @@ get_county_uids <- function(state_uid_str) {
 sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
                            sel_resolution, state_uid = NULL) {
   metric <- match.arg(metric)
-  date_str <- format(date_select, "%Y-%m-%d")
-  rate_col <- ifelse(metric == "rt", paste0(metric, "_", date_str),
-                     paste0(metric, "_rate_", date_str))
-  lwr_col <- paste0(metric, "_lower_", date_str)
-  upr_col <- paste0(metric, "_upper_", date_str)
+  rate_col <- ifelse(metric == "rt", "rt", paste0(metric, "_rate"))
+  lwr_col <- paste0(metric, "_lower")
+  upr_col <- paste0(metric, "_upper")
   select_cols <- c(rate_col, lwr_col, upr_col, "UID", "dispID")
 
   if (is.null(state_uid)) {
-    ret_sf <- sf_all %>%
-      dplyr::filter(resolution == sel_resolution) %>%
-      dplyr::select(!!select_cols)
+    df_part <- rt_long_all[resolution == sel_resolution & date == date_select,
+                           ..select_cols]
   } else {
     stopifnot(sel_resolution == "county")
     county_uids <- get_county_uids(state_uid)
-    ret_sf <- sf_all %>%
-      dplyr::filter(resolution == sel_resolution,
-                    (UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
-                      UID %in% county_uids$extra_uids) %>%
-      dplyr::select(!!select_cols)
+    df_part <- rt_long_all[resolution == sel_resolution & date == date_select &
+                           ((UID > county_uids$uid_lwr &
+                             UID < county_uids$uid_upr) |
+                            UID %in% county_uids$extra_uids), ..select_cols]
   }
+  names(df_part) <- c("estimate", "ci_lower", "ci_upper", "UID", "dispID")
+
+  sf_subset <- sf_all %>%
+    filter(UID %in% df_part$UID)
+  ret_sf <- inner_join(sf_subset, df_part, by = "UID")
   stopifnot(nrow(ret_sf) >= 1)
-  names(ret_sf) <- c("estimate", "ci_lower", "ci_upper", "UID", "dispID", "geometry")
   return(ret_sf)
 }
 
@@ -323,7 +321,7 @@ addPolygon_Point <- function(.map, .data, labels,
                              metric = c("rt", "case", "death"),
                              grpid = "default") {
   metric <- match.arg(metric)
-  stopifnot(names(.data) == c("estimate", "ci_lower", "ci_upper", "UID",
+  stopifnot(names(.data) == c("UID", "estimate", "ci_lower", "ci_upper",
                               "dispID", "geometry"))
   pal_cur <- pal_lst[[metric]]
   pal <- pal_cur(domain = .data$estimate)
@@ -666,9 +664,8 @@ compare_plot <- function(dt, metric_lst, show_ci = c("Yes", "No")) {
 dispID_from_res <- function(sel_resolution) {
   if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
     cur_uid <- sel_resolution
-    dispID_cur <- sf_all %>%
-      filter(UID == cur_uid) %>%
-      pull(dispID) %>%
+    dispID_cur <- rt_long_all[UID == cur_uid &
+                              date == date_real_range[1], dispID] %>%
       sub(", [A-Za-z ]+", "", .)
   } else if (isTRUE(startsWith(sel_resolution, "subnat_"))) {
     dispID_cur <- substring(sel_resolution, first = 8)
@@ -694,21 +691,17 @@ res_from_locinfo <- function(loc_info_cur) {
     intersected <- suppressMessages({
       st_intersects(latlong_sf, sf_all)
     })
-    sf_options <- sf_all[unlist(intersected), ] %>%
-      select(dispID, resolution, UID)
+    intersect_uids <- sf_all[unlist(intersected), ] %>%
+      pull(UID)
 
-    res_options <- sf_options$resolution
+    intersect_dat <- rt_long_all[UID %in% intersect_uids &
+                                 date == date_real_range[1], ]
+    res_options <- intersect_dat$resolution
 
     if ("county" %in% res_options) {
-      set_res <- sf_options %>%
-        filter(resolution == "subnat_USA") %>%
-        pull(UID) %>%
-        as.character()
+      set_res <- as.character(intersect_dat[resolution == "subnat_USA", UID])
     } else if (any(startsWith(res_options, "subnat_"))) {
-      set_res <- sf_options %>%
-        filter(resolution == "country") %>%
-        pull(UID) %>%
-        as.character()
+      set_res <- as.character(intersect_dat[resolution == "country", UID])
     } else {
       set_res <- "country"
     }
@@ -1370,9 +1363,8 @@ server <- function(input, output, session) {
   output$click_plot_dl <- downloadHandler(
     filename = function() {
       cur_uid <- render_uid()
-      dispID_cur <- sf_all %>%
-        filter(UID == cur_uid) %>%
-        pull(dispID)
+      dispID_cur <- rt_long_all[UID == cur_uid &
+                                date == date_real_range[1], dispID]
       return(sprintf("%s_rt_case_death.png", dispID_cur))
     },
     content = function(file) {
@@ -1528,9 +1520,8 @@ server <- function(input, output, session) {
                         input$select_resolution)
       if (startsWith(cur_res, "840") || cur_res == "630") {
         cur_uid <- cur_res
-        dispID_cur <- sf_all %>%
-          filter(UID == cur_uid) %>%
-          pull(dispID) %>%
+        dispID_cur <- rt_long_all[UID == cur_uid &
+                                  date == date_real_range[1], dispID] %>%
           sub(", [A-Za-z ]+", "", .)
       } else {
         dispID_cur <- substring(cur_res, first = 8)
