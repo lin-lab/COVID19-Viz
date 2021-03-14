@@ -222,9 +222,13 @@ rate_labeller <- function(sf_dat, metric = c("rt", "case", "death")) {
   insufficient_str <- ifelse(metric == "death", "deaths", "cases")
   labels_out <- rep(NA, length(metric))
   na_idx <- is.na(metric_col)
+  metric_label <- switch(metric,
+                         rt = "Rt",
+                         case = "Cases / mil",
+                         death = "Deaths / mil")
   labels_out[na_idx] <- sprintf("Too few %s", insufficient_str)
   labels_out[!na_idx] <- sprintf("%s: %0.2f (%0.2f - %0.2f)",
-                                 metric, metric_col[!na_idx],
+                                 metric_label, metric_col[!na_idx],
                                  sf_dat$ci_lower[!na_idx],
                                  sf_dat$ci_upper[!na_idx])
   return(labels_out)
