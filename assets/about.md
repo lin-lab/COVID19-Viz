@@ -96,7 +96,8 @@ Our method requires the following data:
     standard deviation of 5.1 days ([He, X., et al,
     2020](https://doi.org/10.1038/s41591-020-0869-5)).
 
-For a full description of our method, please see [our paper]().
+For a full description of our method, please see [our
+paper](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1):
 
 ### Rt Lag Adjustment
 
@@ -257,9 +258,9 @@ width="800"/></a>
 
 + Our code is licensed under GPL-3.
 
-+ If you'd like to use our code, data, or plots, please cite [our paper]():
++ If you'd like to use our code, data, or plots, please cite [our paper](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1):
 
-Shi, A.\*, Gaynor, S\*. M., Quick, C. & Lin, X. Multi-resolution
+Shi, A.\*, Gaynor, S. M.\*, Quick, C. & Lin, X. Multi-resolution
 characterization of the COVID-19 pandemic: A unified framework and open-source
 tool. *In submission*.
 

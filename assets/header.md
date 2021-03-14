@@ -4,8 +4,11 @@ It is critical to use multiple metrics concurrently as they provide
 complementary insight into relative impact, as in the effective reproduction
 number (Rt), and absolute impact, as in the number of new cases and deaths in a
 given population. This tool provides a visualization for these three metrics
-which are calculated based on [Poisson log-linear models](). Please see the
-About tab for a detailed description of the method and usage of the site.
+which are calculated based on [Poisson log-linear
+models](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1). Please
+see the About tab for more information about the usage of the site and please
+see [our paper](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1)
+for more details about the method.
 
 + The **effective reproduction number (Rt)** characterizes the COVID-19 spread
   rate, defined as the average number of secondary infectious cases produced by
