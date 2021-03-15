@@ -83,9 +83,6 @@ rt_long_all[, `:=` (rt_lag = shift(rt, n = lag_rt, fill = NA, type = "lead"),
 # choices for each place
 place_choices <- read_aws_or_local("names_list.rds")
 
-# state centers
-state_centers <- read_aws_or_local("state_centers.rds")
-
 # map state UIDs to place name
 state_uid_to_place <- as.list(names(place_choices$us_state))
 names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
@@ -311,7 +308,6 @@ sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
   sf_subset <- sf_all %>%
     filter(UID %in% df_part$UID)
   ret_sf <- inner_join(sf_subset, df_part, by = "UID")
-  stopifnot(nrow(ret_sf) >= 1)
   return(ret_sf)
 }
 
