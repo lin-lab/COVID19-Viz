@@ -6,6 +6,7 @@
 #
 #    http://shiny.rstudio.com/
 #
+shinyOptions(cache = cachem::cache_mem(max_size = 100e6))
 
 library(jsonlite)
 library(httr)
