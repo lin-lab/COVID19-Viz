@@ -1362,9 +1362,9 @@ server <- function(input, output, session) {
   })
 
   # actually rendering click plot
-  output$map_click_plot <- renderCachedPlot({
+  output$map_click_plot <- renderPlot({
     click_plot_cur()
-  }, cacheKeyExpr = { render_uid() })
+  })
 
   # click plot download handler
   output$click_plot_dl <- downloadHandler(
@@ -1428,11 +1428,11 @@ server <- function(input, output, session) {
   })
 
   # actually rendering the plot
-  output$heatmap <- renderCachedPlot({
+  output$heatmap <- renderPlot({
     shiny::validate(need(input$select_resolution, message = "Please select a resolution"))
     shiny::validate(need(input$map_metric, "Please select a metric."))
     heatmap_plot()
-  }, cacheKeyExpr = { list(input$select_resolution, input$map_metric) })
+  })
 
   # UI for heatmap: height depends on number of rows
   output$heatmap_ui <- renderUI({
@@ -1505,10 +1505,9 @@ server <- function(input, output, session) {
   })
 
   # actually rendering the plot
-  output$forestplot <- renderCachedPlot({
+  output$forestplot <- renderPlot({
     forestplot_plot()
-  }, cacheKeyExpr = { list(input$map_date, input$map_metric,
-                           input$select_resolution) })
+  })
 
   # rendering the plot
   output$forestplot_ui <- renderUI({
