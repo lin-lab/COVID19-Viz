@@ -971,7 +971,6 @@ ui <- function(req) {
 ########################################################################
 
 server <- function(input, output, session) {
-  cdata <- session$clientData
 
   ########################################################################
   ## Query the IP address for geolocation
@@ -1755,7 +1754,7 @@ server <- function(input, output, session) {
 
   # Heroku disconnects the user from RShiny after 60 seconds of inactivity. Use
   # this to allow the user to be automatically connected
-  session$allowReconnect("force")
+  #session$allowReconnect("force")
 
 }
 
