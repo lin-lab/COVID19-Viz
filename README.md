@@ -28,14 +28,28 @@ our site but are provided for archival purposes.
 
 ## Code Structure
 
+### Main Code
+
 + The code to download the data is in `01_download_rt.sh`.
 + The code to clean the Rt data and merge it with the shapefiles is in
   `02_clean_data.R`. This code generates some `rds` files that are stored in
   `clean_data_pois`.
 + The RShiny app code is in `app.R`.
-+ Running the `prep_data.sh` bash file will run `01_download_rt.sh` and
-  `02_clean_data.R`. You only need to do this if you want to reproduce the data
-  cleaning and merging steps.
++ Running the `prep_data.sh` bash file will run `01_download_rt.sh`,
+  `02_clean_data.R`, and `03_upload_to_aws.sh`. You only need to do this if you
+  want to reproduce the data cleaning and merging steps. The third step will not
+  work because you aren't authorized to upload to our AWS folder.
+
+### Auxiliary Code
+
++ `04_minify_js.sh` contains a script to minimize our custom javascript code.
+  Running this produces a minified javascript file, which speeds up loading time
+  of the webpage.
++ `assets`: Miscellaneous images, html, and static markdown pages and includes
+  in our site.
++ `src`: Folder containing auxiliary R code.
++ `www`: Folder containing javascript code.
++ `raw_data`: Folder where the downloaded data from `01_download_rt.sh` goes.
 
 ## Build Docker
 
