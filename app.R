@@ -739,8 +739,8 @@ set_date_input <- function(session, id, lag,
 
 ui <- function(req) {
   dashboardPage(
-  dashboardHeader(title = "Visualizing COVID-19 Spread Metrics",
-                  titleWidth = 450),
+  dashboardHeader(title = "COVID-19 Spread Mapper",
+                  titleWidth = 300),
   dashboardSidebar(
     # If you want to add / subtract a tab from the sidebar, you must modify it
     # here and also add a new tabItem below.
