@@ -17,21 +17,29 @@ it, simply open the `app.R` file in RStudio and click the `Run App` button.
 
 ## Download our Data
 
-Please see the data files in the `clean_data` folder for the cleaned data that
+Please see the data files in the `clean_data_pois` folder for the cleaned data that
 was displayed on the website.
+
+The `clean_data` folder has Rt estimates that were generated using
+[EpiEstim](https://cran.r-project.org/package=EpiEstim) ([Cori, A., et al.,
+2013](https://doi.org/10.1093/aje/kwt133)). These files are not used anymore for
+our site but are provided for archival purposes.
+
 
 ## Code Structure
 
 + The code to download the data is in `01_download_rt.sh`.
 + The code to clean the Rt data and merge it with the shapefiles is in
   `02_clean_data.R`. This code generates some `rds` files that are stored in
-  `clean_data`.
+  `clean_data_pois`.
 + The RShiny app code is in `app.R`.
 + Running the `prep_data.sh` bash file will run `01_download_rt.sh` and
   `02_clean_data.R`. You only need to do this if you want to reproduce the data
   cleaning and merging steps.
 
 ## Build Docker
+
+This builds a Docker container that mimics how the site is deployed in practice.
 
 `docker build -t local-covid-rt`
 
@@ -41,4 +49,5 @@ Open web browser to [http://localhost:8080](http://localhost:8080).
 
 ## Instructions for Deploying on Heroku with HMDC
 
-See [here](https://hmdc.gitbook.io/r/).
+The website is deployed via Heroku. See [here](https://hmdc.gitbook.io/r/) for
+instructions on how to set it up and for more info.
