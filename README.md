@@ -1,11 +1,14 @@
-# COVID19-Viz
+# COVID-19 Spread Mapper
 
 RShiny visualization of COVID-19 effective reproduction number (Rt). Based on
 data from the Johns Hopkins University Center for Systems Science and
 Engineering (JHU-CSSE) [Coronavirus Resource
-Center](https://github.com/CSSEGISandData/COVID-19). Rt calculated using
-[EpiEstim](https://cran.r-project.org/package=EpiEstim) ([Cori, A., et al.,
-2013](https://doi.org/10.1093/aje/kwt133)).
+Center](https://github.com/CSSEGISandData/COVID-19).
+
+Rt calculation method described in [our preprint](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1).
+
+Code to calculate Rt is located in [our COVID19-Rt Github repo](https://github.com/lin-lab/COVID19-Rt),
+and data preprocessing code is located in the [COVID-data-cleaning repo](https://github.com/lin-lab/COVID-data-cleaning).
 
 ## How to Run the app
 
