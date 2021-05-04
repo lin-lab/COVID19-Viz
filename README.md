@@ -1,11 +1,11 @@
 # COVID-19 Spread Mapper
 
-RShiny visualization of COVID-19 effective reproduction number (Rt). Based on
-data from the Johns Hopkins University Center for Systems Science and
+RShiny visualization of time-varying COVID-19 spread metrics, such as the effective reproduction number (Rt), case rate, and death rate.
+Based on data from the Johns Hopkins University Center for Systems Science and
 Engineering (JHU-CSSE) [Coronavirus Resource
 Center](https://github.com/CSSEGISandData/COVID-19).
 
-Rt calculation method described in [our preprint](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1).
+The calculation method of these metrics is described in [our preprint](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1).
 
 Code to calculate Rt is located in [our COVID19-Rt Github repo](https://github.com/lin-lab/COVID19-Rt),
 and data preprocessing code is located in the [COVID-data-cleaning repo](https://github.com/lin-lab/COVID-data-cleaning).
@@ -19,6 +19,8 @@ it, simply open the `app.R` file in RStudio and click the `Run App` button.
 
 Please see the data files in the `clean_data_pois` folder for the cleaned data that
 was displayed on the website.
+These were calculated from [our preprint](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1).
+
 
 The `clean_data` folder has Rt estimates that were generated using
 [EpiEstim](https://cran.r-project.org/package=EpiEstim) ([Cori, A., et al.,
