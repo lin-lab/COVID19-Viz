@@ -64,13 +64,21 @@ state_rt_long <- read_csv("raw_data/jhu_state_rt_case_death_rate.csv",
   data.table() %>%
   reformat_data(START_DATE)
 
-# make wide format
+# read state-level vaccine data
+state_vax <- read_csv("../COVID-data-cleaning/cdc_vax_data/govex_COVID-19/data_tables/vaccine_data/us_data/time_series/vaccine_data_us_timeline.csv")
+
+state_vax_wide <- state_vax %>%
+  select(Province_State, Date, Vaccine_Type, Stage_One_Doses, Stage_Two_Doses) %>%
+  pivot_wider(id_cols = c(Province_State, Date),
+              names_from = Vaccine_Type,
+              values_from = c(Stage_One_Doses, Stage_Two_Doses))
+state_rt_vax <- left_join(state_rt_long, state_vax_wide,
+                          by = c("stateName" = "Province_State", "date" = "Date"))
+
+# Select the state info of the states we want to merge.
 state_rt_tomerge <- state_rt_long %>%
-  select(UID, stateName, date, starts_with("rt"), starts_with("case_"),
-         starts_with("death_")) %>%
-  pivot_wider(id_cols = c(UID, stateName), names_from = date,
-              values_from = c(starts_with("rt"), starts_with("case_"),
-                              starts_with("death_")))
+  filter(date == max(date)) %>%
+  select(UID, stateName)
 
 state_maps <- ne_states(country = "united states of america",
                         returnclass = "sf")
@@ -121,8 +129,9 @@ state_merged <- state_maps %>%
   select(UID, dispID, resolution, starts_with("rt"), starts_with("case_"),
          starts_with("death_"))
 
+
 exported_states <- with(state_merged, data.table(UID = UID))
-state_rt_long_export <- state_rt_long[exported_states, on = "UID"][,
+state_rt_long_export <- state_rt_vax[exported_states, on = "UID"][,
     resolution := "subnat_USA"]
 setnames(state_rt_long_export, old = "Combined_Key", new = "dispID")
 # drop unneeded columns
@@ -142,7 +151,7 @@ county_cols <- cols(
   county = col_character(),
   stateName = col_character(),
   date = col_date(format = "%Y-%m-%d"),
-  FIPS = col_double(),
+  FIPS = col_character(),
   positiveIncrease = col_integer(),
   deathIncrease = col_integer(),
   positive = col_integer(),
@@ -169,13 +178,33 @@ county_rt_long <- read_csv("raw_data/jhu_county_rt_case_death_rate.csv",
 # make combined key for county rt long
 county_rt_long[, Combined_Key := paste(county, stateName, sep = ", ")]
 
+# read county-level vax data
+county_vax_orig <- fread("../cdc-vax-data/vaccine_county_data.csv")
+county_vax <- county_vax_orig[Completeness_pct >= 80 & !is.na(Completeness_pct)
+                              & FIPS != "UNK", ]
+setnames(county_vax, old = "Date", new = "date")
+setorderv(county_vax, "date")
+
+county_vax[, Census2019_18PlusPop := Series_Complete_18Plus / Series_Complete_18PlusPop_Pct * 100]
+county_vax[, Census2019_65PlusPop := Series_Complete_65Plus / Series_Complete_65PlusPop_Pct * 100]
+county_vax[, Census2019_Pop := Series_Complete_Yes / Series_Complete_Pop_Pct * 100]
+county_vax[StateName != "Puerto Rico", UID := 84000000 + as.integer(FIPS)]
+county_vax[StateName == "Puerto Rico", UID := 63000000 + as.integer(FIPS)]
+
+max_date <- max(county_rt_long$date)
+rt_fips <- county_rt_long[date == max_date, .(UID, FIPS, stateName, county)]
+
+vax_fips <- county_vax[date == max_date, .(UID, FIPS, StateName, County)]
+rt_vax_fips <- merge(rt_fips, vax_fips, by.x = "UID", by.y = "UID",
+                     all = TRUE)
+rt_vax_fips[is.na(FIPS.y), ] %>%
+  View()
+
 # Fix weird counties.
 weird_counties <- county_rt_long[is.na(FIPS),
                                  .(county, stateName, UID)] %>%
   distinct()
 weird_counties
-
-max_date <- max(county_rt_long$date)
 
 county_rt_long %>%
   filter(stateName == "Massachusetts", date == max_date)
@@ -188,6 +217,41 @@ county_rt_long %>%
 county_rt_long %>%
   filter(stateName == "Utah", date == max_date)
 
+county_vax_subset <- county_vax[County == "Dukes" | County == "Nantucket", ]
+combine_county_vax <- function(county_names, statename) {
+  stopifnot(length(county_names) > 1)
+  stopifnot(length(statename) == 1)
+  county_vax_subset <- county_vax[(County %in% county_names) &
+                                  (StateName == statename), ]
+  uniq_counties <- uniqueN(county_vax_subset$FIPS)
+
+  # don't combine if only 0-1 counties
+  if (uniq_counties == 1) {
+    return(county_vax_subset)
+  }
+
+  county_name <- county_vax_subset$FIPS
+  county_lst <- split(county_vax_subset, by = "FIPS")
+  ages <- c("Yes", "12Plus", "18Plus", "65Plus")
+  ret_lst <- list()
+  for (age in ages) {
+    pop_col <- ifelse(age == "Yes", "Census2019_Pop",
+                      paste0("Census2019_", age, "Pop"))
+    vax_col <- paste0("Series_Complete_", age)
+    pop_lst <- lapply(county_lst, function(x) { x[[pop_col]] })
+    total_pop <- purrr::reduce(pop_lst, `+`)
+    vax_lst <- lapply(county_lst, function(x) { x[[vax_col]]})
+    total_vax <- purrr::reduce(vax_lst, `+`)
+    ret_lst[[vax_col]] <- total_vax
+    vax_col_name <- ifelse(age == "Yes", "Series_Complete_Pop_Pct",
+                           paste0(vax_col, "Pop_Pct"))
+    ret_lst[[vax_col_name]] <- 100 * total_vax / total_pop
+  }
+  ret <- data.table(do.call(cbind, ret_lst))
+  ret[, date := county_lst[[1]]$date]
+  return(ret)
+}
+
 # join Dukes and Nantucket in MA
 dukes_nantucket <- county_maps %>%
   filter(name %in% c("Dukes", "Nantucket"),
@@ -197,6 +261,11 @@ sf_dukes_nantucket <- st_sf(UID = 84070002,
                             geometry = st_union(dukes_nantucket))
 county_rt_long <- county_rt_long[!(county %in% c("Dukes", "Nantucket") &
                                     stateName == "Massachusetts")]
+vax_dukes_nantucket <- combine_county_vax(c("Dukes", "Nantucket"),
+                                          "Massachusetts")
+vax_dukes_nantucket[, UID := 84070002]
+county_vax <- county_vax[!(County %in% c("Dukes", "Nantucket") &
+                           StateName == "Massachusetts"), ]
 
 # join NYC counties
 nyc_remove <- c("Kings", "Queens", "Bronx", "Richmond")
@@ -212,6 +281,11 @@ county_rt_long[stateName == "New York", unique(county)]
 # We remove New York County so we can replace it later
 county_maps <- county_maps %>%
   filter(UID != 84036061)
+
+# create a combined NYC county and remove individual boroughs
+vax_nyc <- combine_county_vax(nyc_counties, "New York")
+vax_nyc[, UID := 84036061]
+county_vax <- county_vax[!(County %in% nyc_counties & StateName == "New York"), ]
 
 # make a point for Kansas City
 sf_kc <- st_sf(UID = 84070003,
@@ -231,6 +305,7 @@ utah_sf_orig <- county_maps %>%
   filter(state_name == "Utah")
 new_geometries <- list()
 utah_uids <- list()
+utah_vax_lst <- list()
 for (i in seq_along(utah_join)) {
   join_counties <- utah_sf_orig %>%
     filter(name %in% utah_join[[i]]) %>%
@@ -240,6 +315,10 @@ for (i in seq_along(utah_join)) {
     filter(stateName == "Utah", date == max_date,
            county == names(utah_join)[i]) %>%
     use_series(UID)
+
+  vax_cur <- combine_county_vax(utah_join[[i]], "Utah")
+  vax_cur$UID <- utah_uids[[i]]
+  utah_vax_lst[[i]] <- vax_cur
 }
 
 sf_utah <- st_sf(UID = unlist(utah_uids),
@@ -250,17 +329,23 @@ utah_counties_remove <- unlist(utah_join)
 county_rt_long <- county_rt_long[!(county %in% utah_counties_remove &
                                    stateName == "Utah")]
 
+vax_utah <- do.call(rbind, utah_vax_lst)
+county_vax <- county_vax[!(County %in% utah_counties_remove & StateName == "Utah"), ]
+
+# get one county per row
 county_rt_wide <- county_rt_long %>%
+  filter(date == max_date) %>%
   select(county, stateName, UID, FIPS, date, starts_with("rt"),
-         starts_with("case_"), starts_with("death_"), Combined_Key) %>%
-  pivot_wider(id_cols = c(county, stateName, UID, FIPS, Combined_Key),
-              names_from = date,
-              values_from = c(starts_with("rt"), starts_with("case_"),
-                              starts_with("death_")))
+         starts_with("case_"), starts_with("death_"), Combined_Key)
 
 county_maps_new <- county_maps %>%
   select(UID, geometry) %>%
   rbind(sf_dukes_nantucket, sf_nyc, sf_kc, sf_utah)
+
+county_vax_final <- county_vax %>%
+  select(starts_with("Series_Complete"), date, UID) %>%
+  rbind(vax_dukes_nantucket, vax_nyc, vax_utah)
+
 
 # check if there will be counties that don't merge with the county maps
 # data frame of FIPS in the map
@@ -269,6 +354,7 @@ maps_df <- data.frame(UID = county_maps_new$UID)
 old_names <- anti_join(county_rt_wide, maps_df, by = "UID") %>%
   select(UID, county, stateName)
 print(old_names, n = Inf)
+
 
 # do the merge
 county_merged <- county_maps_new %>%
@@ -279,11 +365,17 @@ county_merged <- county_maps_new %>%
          starts_with("case_"), starts_with("death_"))
 
 exported_counties <- data.table(UID = county_merged$UID)
+
 county_rt_long_export <- county_rt_long[exported_counties, on = "UID"]
 county_rt_long_export[, resolution := "county"]
+
+county_final <- merge(county_rt_long_export, county_vax_final,
+                      by = c("date", "UID"), all.x = TRUE)
+
 # drop unneeded columns
-county_rt_long_export[, `:=` (FIPS = NULL, stateName = NULL, county = NULL)]
-setnames(county_rt_long_export, old = "Combined_Key", new = "dispID")
+county_final[, `:=` (FIPS = NULL, stateName = NULL, county = NULL)]
+setnames(county_final, old = "Combined_Key", new = "dispID")
+
 
 ########################################################################
 ## International data
@@ -759,7 +851,7 @@ world_rt_long_export <- global_rt_long[exported_countries, on = "UID"] %>%
 # use fill; not all dates available in subnational data
 sf_all <- bind_rows(world_merged, provinces_merged, subnat_merged, state_merged, county_merged)
 rt_long_all <- rbind(world_rt_long_export, provinces_rt_long_export, subnat_rt_long_export,
-                     state_rt_long_export, county_rt_long_export)
+                     state_rt_long_export, county_final, fill = TRUE)
 
 state_province_names1 <- sf_all %>%
   filter(startsWith(resolution, "subnat"),
