@@ -571,7 +571,8 @@ uniq_countries <- unique(subnat_rt_long$Country_Region)
 # Handle UK, Chile, and India separately
 sep_countries <- c("United Kingdom", "India")
 select_countries <- uniq_countries[!(uniq_countries %in% sep_countries)]
-subnat_sf_orig <- ne_states(country = select_countries, returnclass = "sf")
+subnat_sf_orig <- ne_states(country = select_countries, returnclass = "sf") %>%
+  st_make_valid()
 
 # For UK, we only have England, Scotland, Wales, and Northern Ireland
 uk_sf <- ne_countries(country = "united kingdom", type = "map_units",
@@ -705,6 +706,10 @@ subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Andaman and Nicobar, India"] <
 
 subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Dadra and Nagar Haveli, India"] <- "Dadra and Nagar Haveli and Daman and Diu, India"
 subnat_sf$Combined_Key[subnat_sf$Combined_Key == "Daman and Diu, India"] <- "Dadra and Nagar Haveli and Daman and Diu, India"
+
+valid <- subnat_sf %>%
+  st_is_valid()
+all(valid)
 
 repeated_subnat <- subnat_sf %>%
   group_by(Combined_Key) %>%
