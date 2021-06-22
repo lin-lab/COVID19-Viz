@@ -65,7 +65,20 @@ state_rt_long <- read_csv("raw_data/jhu_state_rt_case_death_rate.csv",
   reformat_data(START_DATE)
 
 # read state-level vaccine data
-state_vax <- read_csv("../COVID-data-cleaning/cdc_vax_data/govex_COVID-19/data_tables/vaccine_data/us_data/time_series/vaccine_data_us_timeline.csv")
+state_vax <- read_csv("../COVID-data-cleaning/cdc_vax_data/govex_COVID-19/data_tables/vaccine_data/us_data/time_series/vaccine_data_us_timeline.csv") %>%
+  data.table()
+
+uid_table <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv") %>%
+  data.table()
+
+state_pop <- uid_table[Country_Region == "US" & is.na(Admin2) &
+                       Combined_Key != "US",
+                       .(Combined_Key, Population)]
+state_vax <- merge(state_vax, state_pop, by = "Combined_Key", all.x = TRUE,
+                   all.y = FALSE)
+vax_cols <- c("Stage_One_Doses", "Stage_Two_Doses")
+state_vax[, (vax_cols) := lapply(.SD, function(x) { x / Population * 100 }),
+          .SDcols = vax_cols]
 
 state_vax_wide <- state_vax %>%
   select(Province_State, Date, Vaccine_Type, Stage_One_Doses, Stage_Two_Doses) %>%
@@ -197,8 +210,6 @@ rt_fips <- county_rt_long[date == max_date, .(UID, FIPS, stateName, county)]
 vax_fips <- county_vax[date == max_date, .(UID, FIPS, StateName, County)]
 rt_vax_fips <- merge(rt_fips, vax_fips, by.x = "UID", by.y = "UID",
                      all = TRUE)
-rt_vax_fips[is.na(FIPS.y), ] %>%
-  View()
 
 # Fix weird counties.
 weird_counties <- county_rt_long[is.na(FIPS),
@@ -344,6 +355,7 @@ county_maps_new <- county_maps %>%
 
 county_vax_final <- county_vax %>%
   select(starts_with("Series_Complete"), date, UID) %>%
+  select(!ends_with("SVI")) %>%
   rbind(vax_dukes_nantucket, vax_nyc, vax_utah)
 
 
