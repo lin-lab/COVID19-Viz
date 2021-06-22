@@ -6,7 +6,6 @@
 #
 #    http://shiny.rstudio.com/
 #
-shinyOptions(cache = cachem::cache_mem(max_size = 100e6))
 
 library(jsonlite)
 library(httr)
@@ -27,6 +26,7 @@ library(dplyr)
 library(data.table)
 library(RColorBrewer)
 library(shinyStore)
+shinyOptions(cache = cachem::cache_mem(max_size = 100e6))
 
 source("src/leaflet_recolor.R")
 
@@ -83,9 +83,6 @@ rt_long_all[, `:=` (rt_lag = shift(rt, n = lag_rt, fill = NA, type = "lead"),
 # choices for each place
 place_choices <- read_aws_or_local("names_list.rds")
 
-# state centers
-state_centers <- read_aws_or_local("state_centers.rds")
-
 # map state UIDs to place name
 state_uid_to_place <- as.list(names(place_choices$us_state))
 names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
@@ -98,6 +95,7 @@ names(state_uid_to_place) <- unlist(place_choices$us_state, use.names = FALSE)
 bins_rt <- c(0, 0.5, 0.75, 1.0, 1.25, 1.5, 2, Inf)
 bins_cases <- c(0, 50, 100, 250, 500, 750, 1000, Inf)
 bins_deaths <- c(0, 1, 2, 5, 10, 25, 50, Inf)
+bins_vax <- c(0, 15, 30, 45, 60, 75, 90, 100)
 colors_rt <- rev(brewer.pal(7, "RdYlBu"))
 #colors_rt <- viridis(7)
 #colors_cases <- brewer.pal(7, "YlOrRd")
@@ -109,12 +107,16 @@ deaths_color_labels <- c("0 - 1", "1 - 2", "2 - 5", "5 - 10", "10 - 25",
                          "25 - 50", "50+")
 rt_color_labels <- c("0.00 - 0.50", "0.50 - 0.75", "0.75 - 1.00", "1.00 - 1.25",
                      "1.25 - 1.50", "1.50 - 2.00", "2+")
+vax_color_labels = c("0% - 15%", "15% - 30%", "30% - 45%", "45% - 60%",
+                     "60% - 75%", "75% - 90%", "90%+")
 pal_rt <- purrr::partial(colorBin, palette = colors_rt, bins = bins_rt)
 pal_cases <- purrr::partial(colorBin, palette = colors_cases,
                             bins = bins_cases)
 pal_deaths <- purrr::partial(colorBin, palette = colors_cases,
                              bins = bins_deaths)
-pal_lst <- list(rt = pal_rt, case = pal_cases, death = pal_deaths)
+pal_vax <- purrr::partial(colorBin, palette = colors_cases, bins = bins_vax)
+pal_lst <- list(rt = pal_rt, case = pal_cases, death = pal_deaths,
+                vax = pal_vax)
 
 # set up defaults for adding stuff to leaflet maps
 addPolygons_default <-
@@ -235,13 +237,33 @@ rate_labeller <- function(sf_dat, metric = c("rt", "case", "death")) {
   return(labels_out)
 }
 
+vax_labeller <- function(sf_dat, metric = c("vax_all", "vax_18", "vax_65")) {
+  stopifnot(names(sf_dat) == c("UID", "estimate", "dispID", "geometry"))
+  metric <- match.arg(metric)
+  metric_col <- sf_dat$estimate
+  labels_out <- rep(NA_character_, length(metric))
+  na_idx <- is.na(metric_col)
+  metric_label <- switch(metric,
+                         vax_all = "Population vaccinated",,
+                         vax_65 = "65+ Population vaccinated",
+                         vax_18 = "18+ Population vaccinated")
+  labels_out[na_idx] <- sprintf("No data available.")
+  labels_out[!na_idx] <- sprintf("%s: %0.1f%%", metric_label,
+                                 metric_col[!na_idx])
+  return(labels_out)
+}
+
 #' Generate labels for the map
 #'
 #' @param sf_dat An sf object with columns "Rt", "Rt_lwr", "Rt_upr", "UID",
 #' "dispID", "geometry"
 #' @param date_select The selected date
 master_labeller <- function(sf_dat, date_select, metric) {
-  rate_labels <- rate_labeller(sf_dat, metric)
+  if (startsWith(metric, "vax")) {
+    rate_labels <- vax_labeller(sf_dat, metric)
+  } else {
+    rate_labels <- rate_labeller(sf_dat, metric)
+  }
   labels_final <- sprintf("<strong>%s</strong><br/>Date: %s<br/>%s",
                           sf_dat$dispID, date_select, rate_labels) %>%
       lapply(htmltools::HTML)
@@ -281,19 +303,39 @@ get_county_uids <- function(state_uid_str) {
   return(ret)
 }
 
+select_vax_col <- function(sel_resolution, metric) {
+  if (sel_resolution == "") {
+    return("")
+  }
+}
+
 #' Subset the sf_all object by date and resolution.
 #'
 #' @param date_select Selcted date as a date object.
 #' @param sel_resolution Selected resolution.
 #' @param state_uid A state UID string. If non-null, uses the state UID to
 #' select the counties in that state. See get_county_uids.
-sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
+sf_by_date_res <- function(date_select,
+                           metric = c("rt", "case", "death", "vax_all",
+                                      "vax_65", "vax_18"),
                            sel_resolution, state_uid = NULL) {
   metric <- match.arg(metric)
-  rate_col <- ifelse(metric == "rt", "rt", paste0(metric, "_rate"))
-  lwr_col <- paste0(metric, "_lower")
-  upr_col <- paste0(metric, "_upper")
-  select_cols <- c(rate_col, lwr_col, upr_col, "UID", "dispID")
+  if (startsWith(metric, "vax")) {
+    if (is.null(state_uid)) {
+      rate_col = "Stage_Two_Doses_All"
+    } else {
+      rate_col <- switch(metric,
+                         vax_all = "Series_Complete_Pop_Pct",
+                         vax_18 = "Series_Complete_18PlusPop_Pct",
+                         vax_65 = "Series_Complete_65PlusPop_Pct")
+    }
+    select_cols <- c(rate_col, "UID", "dispID")
+  } else {
+    rate_col <- ifelse(metric == "rt", "rt", paste0(metric, "_rate"))
+    lwr_col <- paste0(metric, "_lower")
+    upr_col <- paste0(metric, "_upper")
+    select_cols <- c(rate_col, lwr_col, upr_col, "UID", "dispID")
+  }
 
   if (is.null(state_uid)) {
     df_part <- rt_long_all[resolution == sel_resolution & date == date_select,
@@ -306,8 +348,12 @@ sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
                              UID < county_uids$uid_upr) |
                             UID %in% county_uids$extra_uids), ..select_cols]
   }
-  names(df_part) <- c("estimate", "ci_lower", "ci_upper", "UID", "dispID")
 
+  if (startsWith(metric, "vax")) {
+    names(df_part) <- c("estimate", "UID", "dispID")
+  } else {
+    names(df_part) <- c("estimate", "ci_lower", "ci_upper", "UID", "dispID")
+  }
   sf_subset <- sf_all %>%
     filter(UID %in% df_part$UID)
   ret_sf <- inner_join(sf_subset, df_part, by = "UID")
@@ -323,12 +369,15 @@ sf_by_date_res <- function(date_select, metric = c("rt", "case", "death"),
 #' @param grpid Group ID for the added polygons and points. Allows one to use
 #' clearGroup to remove the added polygons and points.
 addPolygon_Point <- function(.map, .data, labels,
-                             metric = c("rt", "case", "death"),
+                             metric = c("rt", "case", "death", "vax_all", "vax_18", "vax_65"),
                              grpid = "default") {
   metric <- match.arg(metric)
-  stopifnot(names(.data) == c("UID", "estimate", "ci_lower", "ci_upper",
-                              "dispID", "geometry"))
-  pal_cur <- pal_lst[[metric]]
+  #stopifnot(names(.data) == c("UID", "estimate", "ci_lower", "ci_upper", "dispID", "geometry"))
+  if (startsWith(metric, "vax")) {
+    pal_cur <- pal_lst[["vax"]]
+  } else {
+    pal_cur <- pal_lst[[metric]]
+  }
   pal <- pal_cur(domain = .data$estimate)
   polygon_idx <- st_is(.data, "POLYGON") | st_is(.data, "MULTIPOLYGON")
   data_polygons <- .data[polygon_idx, ]
@@ -428,8 +477,50 @@ click_plot <- function(plt_dat) {
           axis.text = element_text(size = 15),
           legend.position = "bottom") +
     guides(linetype = guide_legend(title = NULL, nrow = 1))
-  final_plt <- plot_grid(rt_plt, newcases_plt, deaths_plt, ncol = 1,
-                         align = "v", axis = "l")
+
+
+  vax_plt <- NULL
+  resolution <- unique(plt_dat$resolution)
+  if (resolution == "subnat_USA") {
+
+    vax_plt <- plt_dat[date >= as.Date("2021-01-01"), ] %>%
+      ggplot(aes(x = date, y = Stage_Two_Doses_All)) +
+      geom_line() +
+      geom_point() +
+      theme_cowplot() +
+      xlab("Date") + ylab("% Pop Vaccinated") +
+      background_grid(major = "xy", minor = "xy") +
+      theme(text = element_text(size = 18),
+            axis.text = element_text(size = 15))
+
+  } else if (resolution == "county") {
+
+    vax_dat <- plt_dat[date >= as.Date("2021-01-01"), ] %>%
+      select(starts_with("Series_Complete_") & ends_with("Pop_Pct"), date) %>%
+      melt(id.vars = "date", variable.name = "vax_series", value = "vax_pct")
+    vax_dat[vax_series == "Series_Complete_18PlusPop_Pct", agegrp := "18+"]
+    vax_dat[vax_series == "Series_Complete_12PlusPop_Pct", agegrp := "12+"]
+    vax_dat[vax_series == "Series_Complete_65PlusPop_Pct", agegrp := "65+"]
+    vax_dat[vax_series == "Series_Complete_Pop_Pct", agegrp := "All"]
+
+    vax_plt <- ggplot(vax_dat, aes(x = date, y = vax_pct, color = agegrp)) +
+      geom_point() + geom_line() +
+      scale_color_nejm(name = "Age Group") +
+      theme_cowplot() +
+      xlab("Date") + ylab("% Age Grp Vaccinated") +
+      background_grid(major = "xy", minor = "xy") +
+      theme(text = element_text(size = 18),
+            axis.text = element_text(size = 15),
+            legend.position = "bottom")
+  }
+
+  if (is.null(vax_plt)) {
+    final_plt <- plot_grid(rt_plt, newcases_plt, deaths_plt, ncol = 1,
+                          align = "v", axis = "l")
+  } else {
+    final_plt <- plot_grid(rt_plt, newcases_plt, deaths_plt, vax_plt, ncol = 1,
+                          align = "v", axis = "l")
+  }
   return(final_plt)
 }
 
@@ -721,9 +812,7 @@ res_from_locinfo <- function(loc_info_cur) {
 #' @param id ID of date input.
 #' @param lag Days before the max date to set the date input to.
 #' @param metric Which metric to consider.
-set_date_input <- function(session, id, lag,
-                           metric = c("rt", "case", "death")) {
-  metric <- match.arg(metric)
+set_date_input <- function(session, id, lag, metric) {
   if (metric == "rt") {
     max_date <- date_lag_range[2] - 1
   } else {
@@ -800,7 +889,10 @@ ui <- function(req) {
               radioButtons("map_metric", "Metric:",
                           choices = list("Rt (effective reproduction number), lagged 7 days" = "rt",
                                           "Daily new cases per million" = "case",
-                                          "Daily new deaths per million" = "death")),
+                                          "Daily new deaths per million" = "death",
+                                          "Cum. vaccination rate" = "vax_all",
+                                          "Cum. 65+ vaccination rate" = "vax_65",
+                                          "Cum. 18+ vaccination rate" = "vax_18"))
             ), # end of column 2
             column(width = 4,
               selectInput("select_resolution", "Resolution:",
@@ -811,9 +903,9 @@ ui <- function(req) {
             ) # end of column 3
           ), # end of fluidRow 1
           fluidRow(
-            column(8, leafletOutput("map_main", height = "500px", width = "100%")),
+            column(8, leafletOutput("map_main", height = "600px", width = "100%")),
             # plot of Rt over time
-            column(4, plotOutput("map_click_plot", height = "500px"))
+            column(4, plotOutput("map_click_plot", height = "600px"))
           ), # end of fluidRow 2
           # hidden heatmap and forestplot
           fluidRow(
@@ -1014,10 +1106,17 @@ server <- function(input, output, session) {
     shiny::validate(need(input$map_date, "Please select a date."))
     shiny::validate(need(input$select_resolution, "Please select a resolution."))
     shiny::validate(need(input$map_metric, "Please select a metric."))
+
     cur_res <- ifelse(input$select_resolution == "auto",
                       loc_info$resolution, input$select_resolution)
     cur_metric <- input$map_metric
     date_value_selected <- input$map_date
+
+    is_county <- (startsWith(cur_res, "840") || cur_res == "630")
+    is_usa <- (cur_res == "subnat_USA")
+    if (startsWith(cur_metric, "vax")) {
+      shiny::validate(need(is_county || is_usa, "Vaccination metrics only available for US states/counties."))
+    }
 
     if (cur_metric == "rt") {
       min_date <- date_lag_range[1]
@@ -1038,7 +1137,7 @@ server <- function(input, output, session) {
     req(min_date <= date_value_cur && date_value_cur <= max_date)
 
     # if selected resolution starts with 840 is 630 it's a US county
-    if (startsWith(cur_res, "840") || cur_res == "630") {
+    if (is_county) {
       resolution <- "county"
       state_uid <- cur_res
     } else {
@@ -1217,7 +1316,11 @@ server <- function(input, output, session) {
     prev_grpid <- prev_grpid_res$grpid
     map <- leafletProxy("map_main", data = sf_dat_cur)
     if (identical(prev_grpid_res$res, sel_resolution)) {
-      pal_cur <- pal_lst[[cur_metric]]
+      if (startsWith(cur_metric, "vax")) {
+        pal_cur <- pal_lst[["vax"]]
+      } else {
+        pal_cur <- pal_lst[[cur_metric]]
+      }
       pal <- pal_cur(domain = sf_dat_cur[["estimate"]])
       suppressWarnings({
         map <- map %>%
@@ -1254,14 +1357,20 @@ server <- function(input, output, session) {
 
     # part for changing the map
     map <- leafletProxy("map_main")
-    legend_params <- switch(input$map_metric,
-      "rt" = list(cur_colors = colors_rt, cur_labels = rt_color_labels,
-                  cur_title = "Rt"),
-      "case" = list(cur_colors = colors_cases, cur_labels = cases_color_labels,
-                    cur_title = "Cases per mil."),
-      "death" = list(cur_colors = colors_cases, cur_labels = deaths_color_labels,
-                     cur_title = "Deaths per mil.")
-    )
+    if (startsWith(input$map_metric, "vax")) {
+      legend_params <- list(cur_colors = colors_cases,
+                            cur_labels = vax_color_labels,
+                            cur_title = "Vaccination Percentage")
+    } else {
+      legend_params <- switch(input$map_metric,
+        "rt" = list(cur_colors = colors_rt, cur_labels = rt_color_labels,
+                    cur_title = "Rt"),
+        "case" = list(cur_colors = colors_cases, cur_labels = cases_color_labels,
+                      cur_title = "Cases per mil."),
+        "death" = list(cur_colors = colors_cases, cur_labels = deaths_color_labels,
+                      cur_title = "Deaths per mil.")
+      )
+    }
 
     suppressWarnings({
       map <- map %>%
