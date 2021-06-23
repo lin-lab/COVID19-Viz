@@ -682,9 +682,10 @@ heat_map <- function(plt_df_params) {
 #' Helper for compare_plot
 #'
 #' Actual function that draws the plot.
-compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
-                               ci_upr = NULL, color = "dispID", fill = "dispID",
-                               yintercept = NA, show_ci = FALSE) {
+compare_plt_helper <- function(dt, x, y, metric_str, max_value = Inf,
+                               ci_lwr = NULL, ci_upr = NULL, color = "dispID",
+                               fill = "dispID", yintercept = NA,
+                               show_ci = FALSE) {
   title_str <- sprintf("Comparison of %s", metric_str)
   plt <- ggplot(dt, aes_string(x = x, y = y, color = color)) +
     geom_line() + geom_point() +
@@ -728,22 +729,39 @@ compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
 #' Set up plotting arguments and return a list of plots
 compare_plot <- function(dt, metric_lst, show_ci = c("Yes", "No")) {
   show_ci <- match.arg(show_ci)
-  stopifnot(all(metric_lst %in% colnames(dt)))
   xlim_max <- max(dt$date)
   xlim_min <- min(dt$date_lag)
 
+  resolution <- unique(dt$resolution)
+  stopifnot(length(resolution) == 1)
+  cat(file = stderr(), sprintf("Resolution: %s\n", resolution))
+
+  metric_lst_cpy <- metric_lst
+  if (isTRUE(identical(resolution, "subnat_USA"))) {
+    vax_metrics_idx <- startsWith(metric_lst_cpy, "Series_Complete")
+    metric_lst_cpy <- c(metric_lst[!vax_metrics_idx], "Stage_Two_Doses_All")
+  }
+
   plt_lst <- list()
   # plots where we need CI
-  for (met in metric_lst) {
-    plt_params <- switch(met,
-      "rt" = list(x = "date_lag", y = met, ci_lwr = "rt_lower",
-                  ci_upr = "rt_upper", yintercept = 1, max_value = 10),
-      "case_rate" = list(x = "date", y = met, ci_lwr = "case_lower",
-                          ci_upr = "case_upper", max_value = 10000),
-      "death_rate" = list(x = "date", y = met, ci_lwr = "death_lower",
-                          ci_upr = "death_upper", max_value = 1000),
-      list(x = "date", y = met)
-    )
+  for (met in metric_lst_cpy) {
+    cat(file = stderr(), sprintf("met: %s\n", met))
+    stopifnot(met %in% colnames(dt))
+
+    if (is_metric_vax(met)) {
+      plt_params <- list(x = "date", y = met)
+    }
+    else {
+      plt_params <- switch(met,
+        "rt" = list(x = "date_lag", y = met, ci_lwr = "rt_lower",
+                    ci_upr = "rt_upper", yintercept = 1, max_value = 10),
+        "case_rate" = list(x = "date", y = met, ci_lwr = "case_lower",
+                            ci_upr = "case_upper", max_value = 10000),
+        "death_rate" = list(x = "date", y = met, ci_lwr = "death_lower",
+                            ci_upr = "death_upper", max_value = 1000),
+        list(x = "date", y = met)
+      )
+    }
     plt_params$metric_str <- switch(met,
       "rt" = "Rt",
       "case_rate" = "Daily New Cases per Million",
@@ -754,6 +772,11 @@ compare_plot <- function(dt, metric_lst, show_ci = c("Yes", "No")) {
       "death_percapita" = "Total Deaths per Million",
       "positive" = "Total Cases",
       "death" = "Total Deaths",
+      "Series_Complete_Pop_Pct" = "Cum. Vaccination Rate (%)",
+      "Series_Complete_12PlusPop_Pct" = "Cum. 12+ Vaccination Rate (%)",
+      "Series_Complete_18PlusPop_Pct" = "Cum. 18+ Vaccination Rate (%)",
+      "Series_Complete_65PlusPop_Pct" = "Cum. 65+ Vaccination Rate (%)",
+      "Stage_Two_Doses_All" = "Cum. Vaccination Rate (%)",
       "metric")
 
     show_ci_bool <- identical(show_ci, "Yes")
@@ -983,7 +1006,11 @@ ui <- function(req) {
                                                 "Total cases per million" = "positive_percapita",
                                                 "Total deaths per million" = "death_percapita",
                                                 "Total cases" = "positive",
-                                                "Total deaths" = "death"),
+                                                "Total deaths" = "death",
+                                                "Cum. vaccination rate" = "Series_Complete_Pop_Pct",
+                                                "Cum. 12+ vaccination rate" = "Series_Complete_12PlusPop_Pct",
+                                                "Cum. 18+ vaccination rate" = "Series_Complete_18PlusPop_Pct",
+                                                "Cum. 65+ vaccination rate" = "Series_Complete_65PlusPop_Pct"),
                                  selected = c("rt", "case_rate", "death_rate")),
               actionButton("compare_submit", label = "Draw Plot"),
               actionButton("compare_reset", label = "Reset Fields"),
@@ -1724,9 +1751,18 @@ server <- function(input, output, session) {
     # need to take a dependency on compare_plt_data to trigger UI re-draw on
     # submit
     cur_dat <- compare_plt_data()
+    resolution <- unique(cur_dat$resolution)
+    stopifnot(length(resolution) == 1)
     input$show_ci
+
     metric_lst <- isolate(input$compare_metric)
-    n_metrics <- length(metric_lst)
+    if (isTRUE(identical(resolution, "subnat_USA"))) {
+      vax_metrics_idx <- startsWith(metric_lst, "Series_Complete")
+      n_metrics <- sum(!vax_metrics_idx) + 1
+    } else {
+      n_metrics <- length(metric_lst)
+    }
+
     plt_height <- max(1, n_metrics)
     plt_height
   })
