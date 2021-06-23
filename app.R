@@ -679,6 +679,56 @@ heat_map <- function(plt_df_params) {
   return(p)
 }
 
+max_min_diff <- function(x) {
+  if (isTRUE(all(is.na(x)))) {
+    return(NA_real_)
+  }
+  max(x, na.rm = TRUE) - min(x, na.rm = TRUE)
+}
+
+# plot weekly vaccination rate against weekly case rate
+vax_compare_plot <- function() {
+  dt <- rt_long_all[dispID == "Middlesex, Massachusetts", ]
+  dt[, week_num := paste0(data.table::year(date), "_", data.table::week(date))]
+
+  vax_dt <- dt[, lapply(.SD, max_min_diff), .SDcols =
+               c("Series_Complete_Pop_Pct", "Series_Complete_12PlusPop_Pct",
+                 "Series_Complete_18PlusPop_Pct",
+                 "Series_Complete_65PlusPop_Pct"),
+               by = week_num]
+  date_dt <- dt[, .(week_start = min(date)), by = week_num]
+  case_dt <- dt[, .(case_weekly = 1e6 * (max(positive) - min(positive)) /
+                    max(population)),
+              by = week_num]
+  death_dt <- dt[, .(death_weekly = 1e6 * (max(death) - min(death)) /
+                     max(population)),
+              by = week_num]
+  weekly_dt <- reduce(list(vax_dt, case_dt, death_dt, date_dt),
+                      merge.data.table, by = "week_num")
+  setorderv(weekly_dt, "week_start")
+
+  weekly_long <- melt(weekly_dt, id.vars = c("week_num", "case_weekly",
+                                             "death_weekly", "week_start"),
+                      variable.name = "vax_series", value.name = "pct_increase")
+  weekly_long[vax_series == "Series_Complete_18PlusPop_Pct", agegrp := "18+"]
+  weekly_long[vax_series == "Series_Complete_12PlusPop_Pct", agegrp := "12+"]
+  weekly_long[vax_series == "Series_Complete_65PlusPop_Pct", agegrp := "65+"]
+  weekly_long[vax_series == "Series_Complete_Pop_Pct", agegrp := "All"]
+
+  ggplot(weekly_long[!is.na(pct_increase), ],
+         aes(x = pct_increase, y = case_weekly, color = agegrp)) +
+    geom_point() +
+    xlab("Weekly Vaccination Increase (Percentage Pts)") +
+    ylab("Weekly Case Rate / Million")
+
+  ggplot(weekly_long[!is.na(pct_increase), ],
+         aes(x = pct_increase, y = death_weekly, color = agegrp)) +
+    geom_point() +
+    xlab("Weekly Vaccination Increase (Percentage Pts)") +
+    ylab("Weekly Death Rate / Million")
+}
+
+
 #' Helper for compare_plot
 #'
 #' Actual function that draws the plot.
