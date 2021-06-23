@@ -259,7 +259,7 @@ vax_labeller <- function(sf_dat, metric = c("vax_all", "vax_18", "vax_65")) {
 #' "dispID", "geometry"
 #' @param date_select The selected date
 master_labeller <- function(sf_dat, date_select, metric) {
-  if (startsWith(metric, "vax")) {
+  if (is_metric_vax(metric)) {
     rate_labels <- vax_labeller(sf_dat, metric)
   } else {
     rate_labels <- rate_labeller(sf_dat, metric)
@@ -303,11 +303,21 @@ get_county_uids <- function(state_uid_str) {
   return(ret)
 }
 
+is_uid_us_state <- function(uid) {
+  return(isTRUE(startsWith(uid, "840")) || isTRUE(identical(uid, "630")))
+}
+
+is_metric_vax <- function(metric_str) {
+  req(metric_str)
+  return(isTRUE(startsWith(metric_str, "vax")))
+}
+
 select_vax_col <- function(sel_resolution, metric) {
   if (sel_resolution == "") {
     return("")
   }
 }
+
 
 #' Subset the sf_all object by date and resolution.
 #'
@@ -320,7 +330,7 @@ sf_by_date_res <- function(date_select,
                                       "vax_65", "vax_18"),
                            sel_resolution, state_uid = NULL) {
   metric <- match.arg(metric)
-  if (startsWith(metric, "vax")) {
+  if (is_metric_vax(metric)) {
     if (is.null(state_uid)) {
       rate_col = "Stage_Two_Doses_All"
     } else {
@@ -349,7 +359,7 @@ sf_by_date_res <- function(date_select,
                             UID %in% county_uids$extra_uids), ..select_cols]
   }
 
-  if (startsWith(metric, "vax")) {
+  if (is_metric_vax(metric)) {
     names(df_part) <- c("estimate", "UID", "dispID")
   } else {
     names(df_part) <- c("estimate", "ci_lower", "ci_upper", "UID", "dispID")
@@ -373,7 +383,7 @@ addPolygon_Point <- function(.map, .data, labels,
                              grpid = "default") {
   metric <- match.arg(metric)
   #stopifnot(names(.data) == c("UID", "estimate", "ci_lower", "ci_upper", "dispID", "geometry"))
-  if (startsWith(metric, "vax")) {
+  if (is_metric_vax(metric)) {
     pal_cur <- pal_lst[["vax"]]
   } else {
     pal_cur <- pal_lst[[metric]]
@@ -546,7 +556,7 @@ get_plt_params <- function(metric = c("rt", "case", "death")) {
 }
 
 subset_rt_by_res_date <- function(sel_resolution, date_select = NULL, metric = NULL) {
-  if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
+  if (is_uid_us_state(sel_resolution)) {
     county_uids <- get_county_uids(sel_resolution)
     dat_subset <- rt_long_all[resolution == "county" &
                               ((UID > county_uids$uid_lwr & UID < county_uids$uid_upr) |
@@ -586,8 +596,7 @@ setup_plot_df <- function(sel_resolution, date_select = NULL,
   plt_df <- dat_subset[!is.na(get(plt_params$var)), ]
 
   if (isTRUE(identical(sel_resolution, "county")) ||
-      isTRUE(startsWith(sel_resolution, "840")) ||
-      isTRUE(identical(sel_resolution, "630")) ||
+      is_uid_us_state(sel_resolution) ||
       isTRUE(startsWith(sel_resolution, "subnat_"))) {
     # change e.g. Texas, USA -> Texas; Kings, New York -> Kings
     plt_df[, dispID := sub(", [A-Za-z ]+", "", dispID)]
@@ -758,7 +767,7 @@ compare_plot <- function(dt, metric_lst, show_ci = c("Yes", "No")) {
 #' Get display ID from resolution
 
 dispID_from_res <- function(sel_resolution) {
-  if (startsWith(sel_resolution, "840") || sel_resolution == "630") {
+  if (is_uid_us_state(sel_resolution)) {
     cur_uid <- sel_resolution
     dispID_cur <- rt_long_all[UID == cur_uid &
                               date == date_real_range[1], dispID] %>%
@@ -1112,10 +1121,10 @@ server <- function(input, output, session) {
     cur_metric <- input$map_metric
     date_value_selected <- input$map_date
 
-    is_county <- (startsWith(cur_res, "840") || cur_res == "630")
     is_usa <- (cur_res == "subnat_USA")
-    if (startsWith(cur_metric, "vax")) {
-      shiny::validate(need(is_county || is_usa, "Vaccination metrics only available for US states/counties."))
+    if (is_metric_vax(cur_metric)) {
+      shiny::validate(need(is_uid_us_state(cur_res) || is_usa,
+                           "Vaccination metrics only available for US states/counties."))
     }
 
     if (cur_metric == "rt") {
@@ -1137,7 +1146,7 @@ server <- function(input, output, session) {
     req(min_date <= date_value_cur && date_value_cur <= max_date)
 
     # if selected resolution starts with 840 is 630 it's a US county
-    if (is_county) {
+    if (is_uid_us_state(cur_res)) {
       resolution <- "county"
       state_uid <- cur_res
     } else {
@@ -1316,7 +1325,7 @@ server <- function(input, output, session) {
     prev_grpid <- prev_grpid_res$grpid
     map <- leafletProxy("map_main", data = sf_dat_cur)
     if (identical(prev_grpid_res$res, sel_resolution)) {
-      if (startsWith(cur_metric, "vax")) {
+      if (is_metric_vax(cur_metric)) {
         pal_cur <- pal_lst[["vax"]]
       } else {
         pal_cur <- pal_lst[[cur_metric]]
@@ -1357,7 +1366,7 @@ server <- function(input, output, session) {
 
     # part for changing the map
     map <- leafletProxy("map_main")
-    if (startsWith(input$map_metric, "vax")) {
+    if (is_metric_vax(input$map_metric)) {
       legend_params <- list(cur_colors = colors_cases,
                             cur_labels = vax_color_labels,
                             cur_title = "Vaccination Percentage")
@@ -1451,8 +1460,7 @@ server <- function(input, output, session) {
             ret <- unique(country_uid)
           }
         }
-      } else if (isTRUE(startsWith(cur_res, "840")) ||
-                isTRUE(identical(cur_res, "630"))) {
+      } else if (is_uid_us_state(cur_res)) {
         ret <- as.integer(cur_res)
       }
       #cat(file = stderr(), sprintf("Setting resolution to %d\n", ret))
@@ -1634,7 +1642,7 @@ server <- function(input, output, session) {
     filename = function() {
       cur_res <- ifelse(input$select_resolution == "auto", loc_info$resolution,
                         input$select_resolution)
-      if (startsWith(cur_res, "840") || cur_res == "630") {
+      if (is_uid_us_state(cur_res)) {
         cur_uid <- cur_res
         dispID_cur <- rt_long_all[UID == cur_uid &
                                   date == date_real_range[1], dispID] %>%
