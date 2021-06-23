@@ -936,7 +936,10 @@ sf_all <- sf_all %>%
 ## Save everything
 ########################################################################
 
-out_dir = "clean_data_pois"
+out_dir = "clean_data_pois_vax"
+if (!dir.exists(out_dir)) {
+  dir.create(out_dir, recursive = TRUE)
+}
 saveRDS(sf_all, file.path(out_dir, "sf_all.rds"))
 saveRDS(rt_long_all, file.path(out_dir, "rt_long_all.rds"))
 saveRDS(names_list, file.path(out_dir, "names_list.rds"))

@@ -35,7 +35,7 @@ source("src/leaflet_recolor.R")
 ########################################################################
 
 BASE_URL <- "https://hsph-covid-study.s3.us-east-2.amazonaws.com/website_files_pois"
-BASE_PATH <- "clean_data_pois"
+BASE_PATH <- "clean_data_pois_vax"
 IP_API_KEY <- Sys.getenv("IPSTACK_API_KEY")
 
 #' Read a specified file locally if it exists, else read from AWS
