@@ -28,6 +28,7 @@ library(data.table)
 library(RColorBrewer)
 library(shinyStore)
 
+source("src/prediction_functions.R")
 source("src/leaflet_recolor.R")
 
 ########################################################################
@@ -815,6 +816,18 @@ ui <- function(req) {
             # plot of Rt over time
             column(4, plotOutput("map_click_plot", height = "500px"))
           ), # end of fluidRow 2
+          fluidRow(
+            br(),
+            column(8, plotOutput("prediction_plt", height = "300px",
+                                  width = "100%"), align = "center"),
+            column(4,
+                   includeMarkdown("assets/predictions.md"),
+                   sliderInput("rt_multiplier", "Rt Multiplier:",
+                               min = 0.5, max = 2, value = 1, step = 0.1),
+                   downloadButton("prediction_plt_dl", "Download Prediction Plot")),
+            br(),
+            br()
+          ),
           # hidden heatmap and forestplot
           fluidRow(
             column(6, shinyjs::hidden(uiOutput("heatmap_ui")), align = "center"),
@@ -1351,12 +1364,15 @@ server <- function(input, output, session) {
     ret
   })
 
+  rt_uid <- reactive({
+    render_uid_cur <- render_uid()
+    req(render_uid_cur)
+    rt_long_all[UID == render_uid_cur, ]
+  })
+
   # click plot plotting code
   click_plot_cur <- reactive({
-    render_uid_cur <- render_uid()
-    shiny::validate(need(render_uid_cur,
-                         "Please click a location to show the plot"))
-    plt_dat <- rt_long_all[UID == render_uid_cur, ]
+    plt_dat <- rt_uid()
     shiny::validate(need(nrow(plt_dat) > 0, "No data to plot."))
     suppressWarnings(click_plot(plt_dat))
   })
@@ -1385,6 +1401,46 @@ server <- function(input, output, session) {
     with(loc_info$value,
          sprintf("Your location was automatically detected as: %s", place_str))
   })
+
+  prediction_plt_cur <- reactive({
+    uid_dat <- rt_uid()
+    pred_start_date <- date_lag_range[2]
+    rt_multiplier <- as.numeric(input$rt_multiplier)
+    req(rt_multiplier > 0)
+    rt <- rt_multiplier *
+      as.numeric(tail(uid_dat, 1)[, c("rt_lower", "rt", "rt_upper")])
+    names(rt) <- c("lower 95% CI", "estimate", "upper 95% CI")
+
+    preds <- run_prediction(uid_dat, pred_start_date = pred_start_date,
+                            rt = rt, n_new = 21)
+    req(length(preds) > 0)
+    req(nrow(preds$weekly_plot_df) > 0)
+    plot_start_date <- pred_start_date - 28
+    plot_end_date <- pred_start_date + 21
+    dispID_cur <- unique(uid_dat$dispID)[1]
+    draw_weekly_plot(preds, dispID = dispID_cur, start_date = plot_start_date,
+                     end_date = plot_end_date)
+  })
+
+  output$prediction_plt <- renderPlot({
+    prediction_plt_cur()
+  })
+
+  # prediction plot download handler
+  output$prediction_plt_dl <- downloadHandler(
+    filename = function() {
+      cur_uid <- render_uid()
+      dispID_cur <- rt_long_all[UID == cur_uid &
+                                date == date_real_range[1], dispID]
+      cur_date <- format(Sys.Date(), "%Y-%m-%d")
+      return(sprintf("%s_predictions_%s.png", dispID_cur, cur_date))
+    },
+    content = function(file) {
+      ggsave(filename = file, plot = prediction_plt_cur(),
+             width = 10, height = 6)
+
+    }
+  )
 
   ########################################################################
   ## 1st tab, part 2: Heatmap
@@ -1717,6 +1773,17 @@ server <- function(input, output, session) {
       fwrite(rt_table_render(), file = file, sep = "\t")
     }
   )
+
+  ########################################################################
+  ## Prediction tab
+  ########################################################################
+
+  updateSelectizeInput(session, "prediction_uid",
+                       choices = place_choices, server = TRUE)
+  output$prediction_tmp <- renderText({
+    sprintf("Calculating prediction for %s", input$prediction_location)
+  })
+
 
 
   ########################################################################
