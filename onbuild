@@ -1,0 +1,4 @@
+#!/bin/bash
+
+apt-get update -q
+apt-get install -qy libgdal-dev
