@@ -250,25 +250,43 @@ run_prediction <- function(df, pred_start_date, rt = NULL, n_new = 14) {
 draw_weekly_plot <- function(pred_ret, dispID, start_date, end_date) {
   plt_dat <- pred_ret$weekly_plot_df[date >= start_date & date <= end_date, ]
 
-  actual_dates <- plt_dat[rt_type == "actual", date]
-  ord <- order(actual_dates, decreasing = TRUE)
-  last_actual <- plt_dat[ord[2], .(positiveIncrease, date)]
+  # Connect the last date of actual cases to the next week's predictions. The
+  # first week of predictions starts on the last day of actual cases, which is
+  # why we need the +7 below.
+  max_actual_date <- max(plt_dat[rt_type == "actual", date])
+  last_actual <- plt_dat[rt_type == "actual" & date == max_actual_date,
+                         .(positiveIncrease, date)]
   connect1 <- do.call(rbind, replicate(3, last_actual, simplify = FALSE))
-  connect2 <- plt_dat[rt_type != "actual" & date == actual_dates[ord[1]],
+
+  min_pred_date <- min(plt_dat[rt_type != "actual", date])
+  connect2 <- plt_dat[rt_type != "actual" & date == min_pred_date + 7,
                       .(positiveIncrease, date)]
   connect_df <- cbind(connect1, connect2)
   colnames(connect_df) <- c("y1", "x1", "y2", "x2")
 
-  ggplot(plt_dat, aes(y = positiveIncrease)) +
+  plt_dat_final <- plt_dat[!(date == min_pred_date & rt_type != "actual"), ]
+
+  ylim_min <- max(0, min(plt_dat_final$y_lwr))
+  ylim_max <- min(1.5 * max(plt_dat_final$positiveIncrease),
+                  max(plt_dat_final$y_upr))
+
+  # Don't plot the first week of predictions
+  ggplot(plt_dat_final, aes(y = positiveIncrease)) +
     geom_line(aes(x = date, color = rt_type, linetype = type)) +
     geom_pointrange(aes(x = date, ymin = y_lwr, ymax = y_upr, color = rt_type,
                       group = date)) +
     geom_segment(aes(x = x1, y = y1, xend = x2, yend = y2), linetype = 2,
                  data = connect_df) +
     scale_linetype_discrete(guide = FALSE) +
-    scale_color_nejm(name = "Type") +
+    scale_color_nejm(name = "", breaks = c("actual", "estimate", "lower",
+                                           "upper"),
+                     labels = c("Previously Observed", "Estimated Rt",
+                                "Rt Lwr 95% CI", "Rt Upr 95% CI")) +
     ggtitle(sprintf("Prediction of Weekly New Cases for %s", dispID)) +
     xlab("Date") + ylab("Weekly New Cases") +
+    coord_cartesian(ylim = c(ylim_min, ylim_max)) +
+    scale_x_date(breaks = scales::breaks_pretty(8),
+                 date_minor_breaks = "1 day") +
     theme_cowplot() +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),

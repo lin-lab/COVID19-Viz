@@ -392,7 +392,9 @@ click_plot <- function(plt_dat) {
     geom_ribbon(fill = "#9e9e9e") + geom_line() +
     coord_cartesian(ylim = c(0, ymax_rt)) +
     geom_hline(yintercept = 1, lty = 2) +
-    xlab("Date") + ylab("") + ggtitle(rt_plt_title) +
+    xlab("Date") + ylab("Rt") + ggtitle(rt_plt_title) +
+    scale_x_date(breaks = scales::breaks_pretty(6), date_labels = "%b '%y",
+                 date_minor_breaks = "1 month") +
     theme_cowplot() +
     background_grid(major = "xy", minor = "xy") +
     theme(text = element_text(size = 18),
@@ -407,24 +409,29 @@ click_plot <- function(plt_dat) {
     ggplot(aes(x = date, y = case_rate, ymin = case_lower, ymax = case_upper)) +
     geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Estimated")) +
     geom_line(aes(y = positiveIncrease_percapita, linetype = "Observed")) +
-    xlab("Date") + ylab("") + ggtitle(newcases_plt_title) +
+    xlab("Date") + ylab("New Cases / Million") + ggtitle(newcases_plt_title) +
     theme_cowplot() +
     #coord_cartesian(ylim = c(1, ymax_newcases)) +
     coord_cartesian(ylim = c(0, NA)) +
     background_grid(major = "xy", minor = "xy") +
+    scale_x_date(breaks = scales::breaks_pretty(6), date_labels = "%b '%y",
+                 date_minor_breaks = "1 month") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
           legend.position = "bottom") +
     guides(linetype = guide_legend(title = NULL, nrow = 1))
+
   deaths_plt_title <- sprintf("New Deaths for %s", place_name)
   deaths_plt <- plt_dat %>%
     ggplot(aes(x = date, y = death_rate, ymin = death_lower, ymax = death_upper)) +
     geom_ribbon(fill = "#9e9e9e") + geom_line(aes(linetype = "Estimated")) +
     geom_line(aes(y = deathIncrease_percapita, linetype = "Observed")) +
-    xlab("Date") + ylab("") + ggtitle(deaths_plt_title) +
+    xlab("Date") + ylab("New Deaths / Million") + ggtitle(deaths_plt_title) +
     theme_cowplot() +
     coord_cartesian(ylim = c(0, NA)) +
     background_grid(major = "xy", minor = "xy") +
+    scale_x_date(breaks = scales::breaks_pretty(6), date_labels = "%b '%y",
+                 date_minor_breaks = "1 month") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15),
           legend.position = "bottom") +
@@ -566,7 +573,8 @@ heat_map <- function(plt_df_params) {
       xlab(xlab_str) + ylab("") +
       ggtitle(title_str) +
       scale_y_discrete(limits = rev(levels(plt_df$dispID_ord))) +
-      scale_x_date(expand = c(0, 0)) +
+      scale_x_date(expand = c(0, 0), breaks = scales::breaks_pretty(6),
+                   date_labels = "%b '%y", date_minor_breaks = "1 month") +
       theme(axis.text.y = element_text(size = 16),
             axis.text.x = element_text(size = 16),
             axis.title = element_text(size = 20),
@@ -592,6 +600,8 @@ compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
     ggsci::scale_fill_nejm(name = "Location") +
     ggsci::scale_color_nejm(name = "Location") +
     ggtitle(title_str) + ylab("") +
+    scale_x_date(breaks = scales::breaks_pretty(6), date_labels = "%b '%y",
+                 date_minor_breaks = "1 month") +
     theme(text = element_text(size = 18),
           axis.text = element_text(size = 15))
 
@@ -603,7 +613,7 @@ compare_plt_helper <- function(dt, x, y, metric_str, max_value, ci_lwr = NULL,
     max_value_plt <- NA
   }
 
-  plt <- plt + coord_cartesian(ylim = c(0, max_value_plt))
+  plt <- plt + coord_cartesian(ylim = c(0, max_value_plt), default = TRUE)
 
   if (!is.null(ci_lwr) && show_ci) {
     stopifnot(!is.null(ci_upr))
@@ -660,7 +670,7 @@ compare_plot <- function(dt, metric_lst, show_ci = c("Yes", "No")) {
     show_ci_bool <- identical(show_ci, "Yes")
     call_lst <- c(list(dt = dt, show_ci = show_ci_bool), plt_params)
     plt_lst[[met]] <- do.call(compare_plt_helper, call_lst) +
-        xlim(xlim_min, xlim_max)
+        coord_cartesian(xlim = c(xlim_min, xlim_max), default = TRUE)
   }
   return(plt_lst)
 }
