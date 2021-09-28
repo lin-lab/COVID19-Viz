@@ -81,7 +81,8 @@ reporting. Using the estimated coefficients and standard errors from the GLM, we
 can obtain estimates and confidence intervals for Rt. This method can be
 extended to calculate the case rate and death rate by modeling the expected
 number of new cases or deaths per day as the case or death rate times the
-population.
+population. Additionally, we use the last available Rt estimates to create a
+projection of the weekly case rates.
 
 Our method requires the following data:
 
@@ -95,6 +96,7 @@ Our method requires the following data:
     interval: We used a Gamma distribution with a mean of 5.2 days and a
     standard deviation of 5.1 days ([He, X., et al,
     2020](https://doi.org/10.1038/s41591-020-0869-5)).
+
 
 For a full description of our method, please see [our
 paper](https://www.medrxiv.org/content/10.1101/2021.03.12.21253496v1):
@@ -161,6 +163,10 @@ and a given time interval. For example, if a region has a longer length of
 reporting delay, the lag adjustment of Rt should be increased. Sensitivity
 analysis is valuable to examine the robustness of model assumptions. Future
 research is needed to develop advanced methods to address these limitations.
+
+Finally, the projections of the weekly case rates are dependent on the Rt and
+the model for case rates. If the Rt changes over time or if the data does not
+follow the data generating process, the projections will be off.
 
 ## Interpretation, Using Metrics to Guide Reopening, and the Need for Multiple Metrics
 
