@@ -470,7 +470,7 @@ stopifnot(identical(anyDuplicated(subnat_rt_long), 0L))
 subnat_rt_wide <- subnat_rt_long %>%
   select(UID, Province_State, Country_Region, Lat, Long_, Combined_Key, date,
          starts_with("rt"), starts_with("case_"), starts_with("death_")) %>%
-  pivot_wider(id_cols = UID:Combined_Key,
+  pivot_wider(id_cols = c(UID, Combined_Key, Province_State, Country_Region),
               names_from = date,
               values_from = c(starts_with("rt"), starts_with("case_"),
                               starts_with("death_")))
